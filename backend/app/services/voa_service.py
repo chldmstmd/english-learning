@@ -5,6 +5,7 @@ Feed URLs should be verified from learningenglish.voanews.com section pages
 (look for <link rel="alternate" type="application/rss+xml"> in the page HTML).
 The list below uses known patterns — update if any URL stops working.
 """
+import asyncio
 import logging
 import re
 import time as time_module
@@ -20,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import AsyncSessionLocal
 from app.models.article import Article
 from app.models.sync_log import VoaSyncLog
-from app.services import nlp_service
+from app.services import nlp_service, batch_translation_service
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +256,7 @@ async def sync_feed(db: AsyncSession, feed_cfg: dict) -> tuple[int, str | None]:
             db.add(article)
             await db.commit()
             new_count += 1
+            asyncio.create_task(batch_translation_service.translate_article(article.id))
         except Exception as exc:
             await db.rollback()
             logger.warning("Skipping article %s: %s", source_url, exc)

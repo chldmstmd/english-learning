@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +10,7 @@ from app.models.article import Article
 from app.models.bookmark import UserLibraryBookmark
 from app.models.user import User
 from app.schemas.article import ArticleCreateRequest, ArticleDetailResponse, ArticleListItem
-from app.services import nlp_service, vocab_service, annotation_service
+from app.services import nlp_service, vocab_service, annotation_service, batch_translation_service
 
 router = APIRouter(tags=["articles"])
 
@@ -44,6 +46,7 @@ async def create_article(
             )
 
     await db.commit()
+    asyncio.create_task(batch_translation_service.translate_article(article.id))
     return ArticleListItem.model_validate(article)
 
 
