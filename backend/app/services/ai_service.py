@@ -22,6 +22,26 @@ _ANALYSIS_CONFIG = types.GenerateContentConfig(
     temperature=0.3,
 )
 
+_BATCH_TRANSLATION_CONFIG = types.GenerateContentConfig(
+    thinking_config=types.ThinkingConfig(thinking_budget=0),
+    response_mime_type="application/json",
+    max_output_tokens=16000,
+    temperature=0.1,
+)
+
+_BATCH_TRANSLATION_PROMPT = (
+    "你是专业英中词汇翻译助手。\n"
+    "下面是一篇英文文章，以及文章中每个单词的位置信息。\n"
+    "请根据上下文，为每个单词提供最符合语境的中文翻译（2-6个中文字）。\n"
+    "对于虚词（the, a, is, are, was, were, be, to, of, in, on, at, for, and, or, but, "
+    "that, this, it, not, no, do, does, did, have, has, had, will, would, can, could, "
+    "shall, should, may, might, must）翻译为空字符串。\n\n"
+    "返回JSON数组，每项格式：{{\"si\": 句子序号, \"wi\": 词序号, \"t\": \"翻译\"}}\n"
+    "严格按照输入的位置列表顺序返回，不要遗漏任何一项。\n\n"
+    "文章全文：\n{article_text}\n\n"
+    "单词位置列表：\n{word_list}"
+)
+
 _TRANSLATION_PROMPT = (
     "你是专业英中词汇翻译助手。\n"
     "根据给定句子，为指定单词提供最符合当前语境的中文翻译。\n"
@@ -64,3 +84,23 @@ async def analyze_word(word: str, sentence: str) -> str:
     )
     result = json.loads(response.text)
     return result["analysis"]
+
+
+async def batch_translate_article(article_text: str, words: list[dict]) -> list[dict]:
+    """
+    Translate all words in an article at once.
+    words: [{"si": sentence_index, "wi": word_index, "w": word}]
+    Returns: [{"si": int, "wi": int, "t": str}]
+    """
+    word_list_str = json.dumps(words, ensure_ascii=False)
+    prompt = _BATCH_TRANSLATION_PROMPT.format(
+        article_text=article_text, word_list=word_list_str
+    )
+    response = await asyncio.wait_for(
+        _client.aio.models.generate_content(
+            model=_MODEL, contents=prompt, config=_BATCH_TRANSLATION_CONFIG
+        ),
+        timeout=60.0,
+    )
+    result = json.loads(response.text)
+    return result
