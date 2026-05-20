@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+ruby {
+  ruby-align: center;
+}
+
+rt {
+  font-size: 0.65em;
+  line-height: 1.2;
+  color: inherit;
+}

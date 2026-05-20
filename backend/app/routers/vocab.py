@@ -1,0 +1,96 @@
+import asyncio
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.dependencies import get_current_user
+from app.models.user import User
+from app.schemas.vocab import VocabDetailResponse, VocabItem, VocabStatusUpdate
+from app.services import ai_service, dict_service, vocab_service
+
+router = APIRouter(tags=["vocab"])
+
+
+@router.get("/vocab", response_model=list[VocabItem])
+async def get_vocab(
+    status: list[str] | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await vocab_service.get_user_vocab(db, current_user.id, status=status, page=page, size=size)
+
+
+@router.patch("/vocab/{word}/status", response_model=VocabItem)
+async def update_vocab_status(
+    word: str,
+    body: VocabStatusUpdate,
+    force: bool = Query(default=False),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        vocab = await vocab_service.update_status(db, current_user.id, word, body.status, force=force)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not vocab:
+        raise HTTPException(status_code=404, detail="Word not found in vocabulary")
+    await db.commit()
+    return vocab
+
+
+@router.delete("/vocab/{word}", status_code=204)
+async def delete_vocab(
+    word: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    vocab = await vocab_service.get_word(db, current_user.id, word)
+    if not vocab:
+        raise HTTPException(status_code=404, detail="Word not found in vocabulary")
+    await db.delete(vocab)
+    await db.commit()
+
+
+@router.get("/vocab/{word}/detail", response_model=VocabDetailResponse)
+async def get_vocab_detail(
+    word: str,
+    sentence: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    vocab = await vocab_service.get_word(db, current_user.id, word)
+    if not vocab:
+        raise HTTPException(status_code=404, detail="Word not found in vocabulary")
+
+    source_sentence = sentence or vocab.source_sentence or ""
+
+    dict_result, analysis_result = await asyncio.gather(
+        dict_service.get_word_data(word),
+        _safe_analyze(word, source_sentence),
+        return_exceptions=True,
+    )
+
+    dict_data = dict_result if not isinstance(dict_result, Exception) else {"phonetic": None, "definitions": []}
+    ai_analysis = analysis_result if not isinstance(analysis_result, Exception) else None
+
+    return VocabDetailResponse(
+        word=vocab.word,
+        phonetic=dict_data["phonetic"],
+        status=vocab.status,
+        context_translation=vocab.context_translation,
+        source_sentence=vocab.source_sentence,
+        ai_analysis=ai_analysis,
+        definitions=dict_data["definitions"],
+    )
+
+
+async def _safe_analyze(word: str, sentence: str) -> str | None:
+    if not sentence:
+        return None
+    try:
+        return await ai_service.analyze_word(word, sentence)
+    except Exception:
+        return None
