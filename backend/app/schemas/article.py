@@ -61,5 +61,6 @@ class ArticleDetailResponse(BaseModel):
     source_category: str | None = None
     difficulty: str | None = None
     published_at: datetime | None = None
+    translation_status: str = "pending"
 
     model_config = {"from_attributes": True}
