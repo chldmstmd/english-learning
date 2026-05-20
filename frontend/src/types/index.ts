@@ -48,6 +48,7 @@ export interface ArticleDetail {
   source_category?: string | null;
   difficulty?: "level1" | "level2" | null;
   published_at?: string | null;
+  translation_status?: "pending" | "processing" | "done" | "failed";
 }
 
 export type Difficulty = "level1" | "level2";

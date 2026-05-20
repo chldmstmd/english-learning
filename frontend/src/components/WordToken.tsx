@@ -39,6 +39,8 @@ export const WordToken: React.FC<Props> = ({ token, articleId, sentences, autoOp
             lemma: token.lemma,
             sentence: getSentenceText(),
             article_id: articleId,
+            sentence_index: token.sentence_index,
+            word_index: token.index,
           },
         })
         .json<TranslateResponse>(),

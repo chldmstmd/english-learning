@@ -92,6 +92,12 @@ export default function ArticleReaderPage() {
           <span className="ml-auto text-xs text-gray-400">{article.word_count.toLocaleString()} 词</span>
         </div>
 
+        {article.translation_status === "processing" && (
+          <div className="bg-blue-50 text-blue-600 text-xs text-center py-1.5">
+            正在准备翻译缓存...
+          </div>
+        )}
+
         {/* Article content */}
         <div className="max-w-2xl mx-auto px-8 py-10">
           <ArticleBody
