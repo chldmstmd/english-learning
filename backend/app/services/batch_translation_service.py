@@ -1,7 +1,7 @@
 import logging
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update, func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.database import AsyncSessionLocal
 from app.models.article import Article
@@ -9,6 +9,13 @@ from app.models.article_translation import ArticleTranslation
 from app.services import ai_service
 
 logger = logging.getLogger(__name__)
+
+
+async def _set_status(db, article_id: str, status: str) -> None:
+    await db.execute(
+        update(Article).where(Article.id == article_id).values(translation_status=status)
+    )
+    await db.commit()
 
 
 async def translate_article(article_id: str) -> None:
@@ -24,12 +31,16 @@ async def translate_article(article_id: str) -> None:
             logger.error("Article %s not found for batch translation", article_id)
             return
 
-        article.translation_status = "processing"
-        await db.commit()
+        # Skip if already done
+        if article.translation_status == "done":
+            return
+
+        await _set_status(db, article_id, "processing")
 
         try:
             # Build word list from tokens
             words = []
+            token_lookup = {}
             for token in article.tokens:
                 if token["is_alpha"]:
                     words.append({
@@ -37,10 +48,20 @@ async def translate_article(article_id: str) -> None:
                         "wi": token["index"],
                         "w": token["text"],
                     })
+                    token_lookup[(token["sentence_index"], token["index"])] = token["lemma"]
 
             if not words:
-                article.translation_status = "done"
-                await db.commit()
+                await _set_status(db, article_id, "done")
+                return
+
+            # Check if translations already exist (idempotency)
+            existing_count = await db.scalar(
+                select(func.count()).where(
+                    ArticleTranslation.article_id == article_id
+                )
+            )
+            if existing_count and existing_count >= len(words):
+                await _set_status(db, article_id, "done")
                 return
 
             # Call AI
@@ -51,37 +72,33 @@ async def translate_article(article_id: str) -> None:
             # Build lookup from AI response
             trans_map = {(item["si"], item["wi"]): item["t"] for item in translations}
 
-            # Write to DB
-            records = []
+            # Upsert to DB (ON CONFLICT DO NOTHING)
+            values = []
             for word_info in words:
                 key = (word_info["si"], word_info["wi"])
                 translation = trans_map.get(key, "")
-                # Find lemma from tokens
-                lemma = ""
-                for token in article.tokens:
-                    if token["index"] == word_info["wi"] and token["sentence_index"] == word_info["si"]:
-                        lemma = token["lemma"]
-                        break
-                records.append(ArticleTranslation(
-                    article_id=article_id,
-                    sentence_index=word_info["si"],
-                    word_index=word_info["wi"],
-                    word=word_info["w"],
-                    lemma=lemma,
-                    translation=translation,
-                ))
+                lemma = token_lookup.get(key, "")
+                values.append({
+                    "article_id": article_id,
+                    "sentence_index": word_info["si"],
+                    "word_index": word_info["wi"],
+                    "word": word_info["w"],
+                    "lemma": lemma,
+                    "translation": translation,
+                })
 
-            db.add_all(records)
-            article.translation_status = "done"
-            await db.commit()
-            logger.info("Batch translation complete for article %s (%d words)", article_id, len(records))
+            if values:
+                stmt = pg_insert(ArticleTranslation).values(values)
+                stmt = stmt.on_conflict_do_nothing(
+                    constraint="uq_article_word_position"
+                )
+                await db.execute(stmt)
+                await db.commit()
+
+            await _set_status(db, article_id, "done")
+            logger.info("Batch translation complete for article %s (%d words)", article_id, len(values))
 
         except Exception as exc:
             logger.error("Batch translation failed for article %s: %s", article_id, exc)
             await db.rollback()
-            # Re-fetch to update status
-            async with AsyncSessionLocal() as db2:
-                article = await db2.scalar(select(Article).where(Article.id == article_id))
-                if article:
-                    article.translation_status = "failed"
-                    await db2.commit()
+            await _set_status(db, article_id, "failed")
