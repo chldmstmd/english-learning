@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.article import Article
+from app.models.article_translation import ArticleTranslation
 from app.models.user import User
 from app.schemas.translate import TranslateRequest, TranslateResponse
 from app.services import ai_service, free_translation_service, settings_service, vocab_service, annotation_service
@@ -46,7 +47,23 @@ async def translate_word(
         db, current_user.id, body.lemma, source_sentence=body.sentence
     )
 
-    translation, is_fallback = await _get_translation_with_fallback(body.lemma, body.sentence)
+    # Check batch translation cache
+    cached_translation = None
+    if body.sentence_index is not None and body.word_index is not None:
+        cached = await db.scalar(
+            select(ArticleTranslation).where(
+                ArticleTranslation.article_id == body.article_id,
+                ArticleTranslation.sentence_index == body.sentence_index,
+                ArticleTranslation.word_index == body.word_index,
+            )
+        )
+        if cached and cached.translation:
+            cached_translation = cached.translation
+
+    if cached_translation:
+        translation, is_fallback = cached_translation, False
+    else:
+        translation, is_fallback = await _get_translation_with_fallback(body.lemma, body.sentence)
 
     if not vocab.context_translation:
         vocab.context_translation = translation
