@@ -36,3 +36,7 @@ class Article(Base):
     difficulty: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cover_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Batch translation status: pending | processing | done | failed
+    translation_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="pending"
+    )
