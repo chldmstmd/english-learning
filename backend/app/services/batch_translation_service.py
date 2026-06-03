@@ -38,19 +38,18 @@ async def translate_article(article_id: str) -> None:
         await _set_status(db, article_id, "processing")
 
         try:
-            # Build word list from tokens
-            words = []
-            token_lookup = {}
+            # Build ordered word list from tokens (alpha only)
+            word_entries = []  # [(sentence_index, word_index, text, lemma)]
             for token in article.tokens:
                 if token["is_alpha"]:
-                    words.append({
-                        "si": token["sentence_index"],
-                        "wi": token["index"],
-                        "w": token["text"],
-                    })
-                    token_lookup[(token["sentence_index"], token["index"])] = token["lemma"]
+                    word_entries.append((
+                        token["sentence_index"],
+                        token["index"],
+                        token["text"],
+                        token["lemma"],
+                    ))
 
-            if not words:
+            if not word_entries:
                 await _set_status(db, article_id, "done")
                 return
 
@@ -60,29 +59,24 @@ async def translate_article(article_id: str) -> None:
                     ArticleTranslation.article_id == article_id
                 )
             )
-            if existing_count and existing_count >= len(words):
+            if existing_count and existing_count >= len(word_entries):
                 await _set_status(db, article_id, "done")
                 return
 
-            # Call AI
+            # Call AI with just the word texts (ordered)
+            word_texts = [entry[2] for entry in word_entries]
             translations = await ai_service.batch_translate_article(
-                article.raw_text, words
+                article.raw_text, word_texts
             )
 
-            # Build lookup from AI response
-            trans_map = {(item["si"], item["wi"]): item["t"] for item in translations}
-
-            # Upsert to DB (ON CONFLICT DO NOTHING)
+            # Zip translations with position info (indexing done here)
             values = []
-            for word_info in words:
-                key = (word_info["si"], word_info["wi"])
-                translation = trans_map.get(key, "")
-                lemma = token_lookup.get(key, "")
+            for (si, wi, word, lemma), translation in zip(word_entries, translations):
                 values.append({
                     "article_id": article_id,
-                    "sentence_index": word_info["si"],
-                    "word_index": word_info["wi"],
-                    "word": word_info["w"],
+                    "sentence_index": si,
+                    "word_index": wi,
+                    "word": word,
                     "lemma": lemma,
                     "translation": translation,
                 })

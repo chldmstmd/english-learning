@@ -11,3 +11,9 @@ frontend/dist/
 
 # OS
 .DS_Store
+
+# IDE
+.idea/
+
+# Env backups
+.env.save
