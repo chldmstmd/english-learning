@@ -40,3 +40,6 @@ class Article(Base):
     translation_status: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default="pending"
     )
+    # V1.2: Book/chapter fields (null for standalone articles)
+    book_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    chapter_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
