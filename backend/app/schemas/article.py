@@ -9,6 +9,15 @@ class ArticleCreateRequest(BaseModel):
     raw_text: str
 
 
+class ChapterEditRequest(BaseModel):
+    title: str
+    raw_text: str
+
+
+class ProgressUpdateRequest(BaseModel):
+    last_sentence_index: int
+
+
 class ArticleListItem(BaseModel):
     id: str
     title: str
@@ -62,5 +71,11 @@ class ArticleDetailResponse(BaseModel):
     difficulty: str | None = None
     published_at: datetime | None = None
     translation_status: str = "pending"
+    # Chapter context (null for standalone articles)
+    book_id: str | None = None
+    chapter_order: int | None = None
+    prev_article_id: str | None = None
+    next_article_id: str | None = None
+    last_sentence_index: int | None = None
 
     model_config = {"from_attributes": True}
