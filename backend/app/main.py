@@ -34,6 +34,7 @@ async def lifespan(app: FastAPI):
     import app.models.bookmark       # noqa: F401
     import app.models.reading_history  # noqa: F401
     import app.models.article_translation  # noqa: F401
+    import app.models.book           # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -57,7 +58,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.routers import articles, vocab, translate, settings, library, admin, auth  # noqa: E402
+from app.routers import articles, vocab, translate, settings, library, admin, auth, books  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(articles.router, prefix="/api/v1")
@@ -65,6 +66,7 @@ app.include_router(vocab.router, prefix="/api/v1")
 app.include_router(translate.router, prefix="/api/v1")
 app.include_router(settings.router, prefix="/api/v1")
 app.include_router(library.router, prefix="/api/v1")
+app.include_router(books.router, prefix="/api/v1")
 app.include_router(admin.router)
 
 
