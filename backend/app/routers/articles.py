@@ -1,15 +1,23 @@
 import asyncio
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.article import Article
 from app.models.bookmark import UserLibraryBookmark
+from app.models.reading_history import UserReadingHistory
 from app.models.user import User
-from app.schemas.article import ArticleCreateRequest, ArticleDetailResponse, ArticleListItem
+from app.schemas.article import (
+    ArticleCreateRequest,
+    ArticleDetailResponse,
+    ArticleListItem,
+    ChapterEditRequest,
+    ProgressUpdateRequest,
+)
 from app.services import nlp_service, vocab_service, annotation_service, batch_translation_service
 
 router = APIRouter(tags=["articles"])
@@ -48,6 +56,76 @@ async def create_article(
     await db.commit()
     asyncio.create_task(batch_translation_service.translate_article(article.id))
     return ArticleListItem.model_validate(article)
+
+
+@router.put("/articles/{article_id}", response_model=ArticleListItem)
+async def edit_article(
+    article_id: str,
+    body: ChapterEditRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    article = await db.scalar(
+        select(Article).where(Article.id == article_id, Article.user_id == current_user.id)
+    )
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    old_sentence_count = len(article.sentences)
+    tokens, sentences, word_count = nlp_service.tokenize(body.raw_text)
+    if word_count > 10000:
+        raise HTTPException(status_code=400, detail="Article exceeds 10,000 word limit")
+
+    article.title = body.title
+    article.raw_text = body.raw_text
+    article.tokens = tokens
+    article.sentences = sentences
+    article.word_count = word_count
+    article.translation_status = "pending"
+
+    # If sentence count changed, the saved resume anchor is no longer valid -> reset to chapter start
+    if len(sentences) != old_sentence_count:
+        await db.execute(
+            update(UserReadingHistory)
+            .where(UserReadingHistory.article_id == article_id)
+            .values(last_sentence_index=0)
+        )
+
+    await db.commit()
+    asyncio.create_task(batch_translation_service.translate_article(article.id))
+    return ArticleListItem.model_validate(article)
+
+
+@router.put("/articles/{article_id}/progress", status_code=200)
+async def update_progress(
+    article_id: str,
+    body: ProgressUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    article = await db.scalar(select(Article).where(Article.id == article_id))
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    existing = await db.scalar(
+        select(UserReadingHistory).where(
+            UserReadingHistory.user_id == current_user.id,
+            UserReadingHistory.article_id == article_id,
+        )
+    )
+    if existing:
+        existing.last_sentence_index = body.last_sentence_index
+        existing.book_id = article.book_id
+        existing.last_read_at = datetime.now(timezone.utc)
+    else:
+        db.add(UserReadingHistory(
+            user_id=current_user.id,
+            article_id=article_id,
+            book_id=article.book_id,
+            last_sentence_index=body.last_sentence_index,
+        ))
+    await db.commit()
+    return {"saved": True}
 
 
 @router.get("/articles", response_model=list[ArticleListItem])
@@ -103,6 +181,30 @@ async def get_article(
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
 
+    prev_article_id = None
+    next_article_id = None
+    if article.book_id is not None and article.chapter_order is not None:
+        prev_article_id = await db.scalar(
+            select(Article.id)
+            .where(Article.book_id == article.book_id, Article.chapter_order < article.chapter_order)
+            .order_by(Article.chapter_order.desc())
+            .limit(1)
+        )
+        next_article_id = await db.scalar(
+            select(Article.id)
+            .where(Article.book_id == article.book_id, Article.chapter_order > article.chapter_order)
+            .order_by(Article.chapter_order.asc())
+            .limit(1)
+        )
+
+    history = await db.scalar(
+        select(UserReadingHistory).where(
+            UserReadingHistory.user_id == current_user.id,
+            UserReadingHistory.article_id == article_id,
+        )
+    )
+    last_sentence_index = history.last_sentence_index if history else None
+
     annotations = await annotation_service.get_article_annotations(db, article_id, current_user.id)
     word_statuses = await vocab_service.get_all_word_statuses(db, current_user.id)
 
@@ -123,6 +225,11 @@ async def get_article(
         word_count=article.word_count,
         annotations=annotations,
         word_statuses=article_word_statuses,
+        book_id=article.book_id,
+        chapter_order=article.chapter_order,
+        prev_article_id=prev_article_id,
+        next_article_id=next_article_id,
+        last_sentence_index=last_sentence_index,
     )
 
 
