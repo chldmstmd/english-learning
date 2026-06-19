@@ -17,3 +17,6 @@ frontend/dist/
 
 # Env backups
 .env.save
+
+# Git worktrees
+.worktrees/
