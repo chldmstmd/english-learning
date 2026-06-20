@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
         from app.models.user import User as UserModel
         async with AsyncSessionLocal() as session:
             user = await session.scalar(
-                select(UserModel).where(UserModel.email == settings.admin_email.lower().strip())
+                select(UserModel).where(UserModel.email == app_settings.admin_email.lower().strip())
             )
             if user and user.role == "user":
                 await session.execute(
