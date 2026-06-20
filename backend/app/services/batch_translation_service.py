@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from sqlalchemy import select, update, func, delete as sa_delete
@@ -10,12 +11,51 @@ from app.services import ai_service
 
 logger = logging.getLogger(__name__)
 
+# The event loop only keeps a weak reference to tasks, so a fire-and-forget
+# task can be garbage-collected mid-flight. Hold a strong reference until it
+# finishes so the translation always runs to completion (and reaches its own
+# failure handling on error). See https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task
+_background_tasks: set[asyncio.Task] = set()
+
+
+def spawn_translation(article_id: str) -> None:
+    """Start a batch translation as a tracked background task."""
+    task = asyncio.create_task(translate_article(article_id))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
 
 async def _set_status(db, article_id: str, status: str) -> None:
     await db.execute(
         update(Article).where(Article.id == article_id).values(translation_status=status)
     )
     await db.commit()
+
+
+async def recover_stuck_translations(db) -> int:
+    """Reset articles stranded in `processing` to `failed`.
+
+    Batch translation runs as a fire-and-forget background task that flips the
+    article to `processing` before calling the AI. If the process dies (or the
+    task is GC'd) mid-flight, the `except` branch that sets `failed` never runs
+    and the article is deadlocked: it stays `processing` forever and the trigger
+    endpoints refuse to re-run a `processing` article.
+
+    Any `processing` row seen at process startup can only be such a corpse — a
+    live task only exists within a running process — so we reset them to
+    `failed`, which the UI exposes a retry action for. Returns how many rows
+    were recovered.
+    """
+    result = await db.execute(
+        update(Article)
+        .where(Article.translation_status == "processing")
+        .values(translation_status="failed")
+    )
+    await db.commit()
+    count = result.rowcount or 0
+    if count:
+        logger.warning("Recovered %d translation(s) stuck in 'processing' -> 'failed'", count)
+    return count
 
 
 async def translate_article(article_id: str) -> None:

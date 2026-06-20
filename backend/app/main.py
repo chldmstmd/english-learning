@@ -25,6 +25,12 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # Any article left in `processing` is a corpse from a background task that
+    # died with the previous process; reset it so it can be retried.
+    from app.services import batch_translation_service
+    async with AsyncSessionLocal() as session:
+        await batch_translation_service.recover_stuck_translations(session)
+
     if app_settings.admin_email:
         from sqlalchemy import select, update
         from app.models.user import User as UserModel

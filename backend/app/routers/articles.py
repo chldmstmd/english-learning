@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -288,5 +287,5 @@ async def translate_article(
         return {"translation_status": "processing"}
     article.translation_status = "processing"
     await db.commit()
-    asyncio.create_task(batch_translation_service.translate_article(article_id))
+    batch_translation_service.spawn_translation(article_id)
     return {"translation_status": "processing"}

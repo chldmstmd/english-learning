@@ -1,5 +1,3 @@
-import asyncio
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete as sa_delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -100,7 +98,7 @@ async def translate_library_article(
         return {"translation_status": "processing"}
     article.translation_status = "processing"
     await db.commit()
-    asyncio.create_task(batch_translation_service.translate_article(article_id))
+    batch_translation_service.spawn_translation(article_id)
     return {"translation_status": "processing"}
 
 
@@ -249,7 +247,7 @@ async def translate_library_chapter(
         return {"translation_status": "processing"}
     article.translation_status = "processing"
     await db.commit()
-    asyncio.create_task(batch_translation_service.translate_article(chapter_id))
+    batch_translation_service.spawn_translation(chapter_id)
     return {"translation_status": "processing"}
 
 
