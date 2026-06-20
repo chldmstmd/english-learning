@@ -5,16 +5,20 @@ These verify the idempotency and error conditions we expect from the routes.
 import pytest
 
 
-def test_save_response_structure():
-    """The save endpoint should return a dict with saved=True."""
-    response = {"saved": True}
-    assert response["saved"] is True
+def test_library_book_list_item_is_saved_default():
+    from app.schemas.book import LibraryBookListItem
+    from datetime import datetime, timezone
+
+    item = LibraryBookListItem(id="x", title="T", created_at=datetime.now(timezone.utc))
+    assert item.is_saved is False
 
 
-def test_unsave_response_structure():
-    """The unsave endpoint should return a dict with saved=False."""
-    response = {"saved": False}
-    assert response["saved"] is False
+def test_library_book_list_item_chapter_count_default():
+    from app.schemas.book import LibraryBookListItem
+    from datetime import datetime, timezone
+
+    item = LibraryBookListItem(id="x", title="T", created_at=datetime.now(timezone.utc))
+    assert item.chapter_count == 0
 
 
 def test_library_book_list_item_defaults():
