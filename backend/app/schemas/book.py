@@ -20,8 +20,9 @@ class BookListItem(BaseModel):
     cover_image_url: str | None
     source_category: str | None
     created_at: datetime
-    chapter_count: int = 0          # populated per-request
-    read_chapter_order: int | None = None   # which chapter the user last read (1-based order)
+    chapter_count: int = 0
+    read_chapter_order: int | None = None
+    is_from_library: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -31,7 +32,7 @@ class ChapterListItem(BaseModel):
     title: str
     chapter_order: int
     word_count: int
-    last_sentence_index: int | None = None   # per-user resume position within this chapter
+    last_sentence_index: int | None = None
 
     model_config = {"from_attributes": True}
 
@@ -43,6 +44,17 @@ class BookDetailResponse(BaseModel):
     source_category: str | None
     created_at: datetime
     chapters: list[ChapterListItem]
-    # Resume target: the chapter article_id to continue from, or null if unread
     continue_article_id: str | None = None
     continue_sentence_index: int | None = None
+
+
+class LibraryBookListItem(BaseModel):
+    id: str
+    title: str
+    cover_image_url: str | None
+    source_category: str | None
+    created_at: datetime
+    chapter_count: int = 0
+    is_saved: bool = False
+
+    model_config = {"from_attributes": True}
