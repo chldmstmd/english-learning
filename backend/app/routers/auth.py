@@ -24,6 +24,7 @@ class TokenResponse(BaseModel):
 class UserOut(BaseModel):
     id: str
     email: str
+    role: str
 
     model_config = {"from_attributes": True}
 
