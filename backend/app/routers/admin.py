@@ -215,5 +215,8 @@ async def delete_library_chapter(
     if not article:
         raise HTTPException(status_code=404, detail="Chapter not found")
 
+    await db.execute(sa_delete(ArticleAnnotation).where(ArticleAnnotation.article_id == chapter_id))
+    await db.execute(sa_delete(UserReadingHistory).where(UserReadingHistory.article_id == chapter_id))
+    await db.execute(sa_delete(UserLibraryBookmark).where(UserLibraryBookmark.article_id == chapter_id))
     await db.delete(article)
     await db.commit()
