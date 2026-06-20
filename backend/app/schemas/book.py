@@ -51,10 +51,10 @@ class BookDetailResponse(BaseModel):
 class LibraryBookListItem(BaseModel):
     id: str
     title: str
-    cover_image_url: str | None
-    source_category: str | None
+    cover_image_url: str | None = None
+    source_category: str | None = None
     created_at: datetime
-    chapter_count: int = 0
-    is_saved: bool = False
+    chapter_count: int = 0          # populated per-request
+    is_saved: bool = False          # populated per-request
 
     model_config = {"from_attributes": True}
