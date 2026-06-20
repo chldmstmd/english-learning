@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { PageNav } from "../components/PageNav";
-import type { ArticleListItem } from "../types";
+import type { ArticleListItem, BookListItem } from "../types";
 
 const CATEGORY_LABELS: Record<string, string> = {
   "science-technology": "科技",
@@ -14,13 +14,31 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export default function ArticleListPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [isCreating, setIsCreating] = useState(false);
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
+  const [bookTitle, setBookTitle] = useState("");
+  const [isCreatingBook, setIsCreatingBook] = useState(false);
 
   const { data: articles, isLoading } = useQuery({
     queryKey: ["articles"],
     queryFn: () => api.get("articles").json<ArticleListItem[]>(),
+  });
+
+  const { data: books } = useQuery({
+    queryKey: ["books"],
+    queryFn: () => api.get("books").json<BookListItem[]>(),
+  });
+
+  const createBookMutation = useMutation({
+    mutationFn: (body: { title: string }) => api.post("books", { json: body }).json<BookListItem>(),
+    onSuccess: (book) => {
+      queryClient.invalidateQueries({ queryKey: ["books"] });
+      setBookTitle("");
+      setIsCreatingBook(false);
+      navigate(`/books/${book.id}`);
+    },
   });
 
   const createMutation = useMutation({
@@ -62,13 +80,44 @@ export default function ArticleListPage() {
       <div className="max-w-3xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-bold text-gray-900">文章</h1>
-          <button
-            onClick={() => setIsCreating(!isCreating)}
-            className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors"
-          >
-            + 添加文章
-          </button>
+          <div className="flex items-center">
+            <button
+              onClick={() => setIsCreatingBook(!isCreatingBook)}
+              className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors mr-2"
+            >
+              + 创建书
+            </button>
+            <button
+              onClick={() => setIsCreating(!isCreating)}
+              className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors"
+            >
+              + 添加文章
+            </button>
+          </div>
         </div>
+
+        {isCreatingBook && (
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mb-6">
+            <h2 className="font-semibold text-gray-800 mb-4">创建一本书</h2>
+            <input
+              type="text" value={bookTitle} onChange={(e) => setBookTitle(e.target.value)}
+              placeholder="书名"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => createBookMutation.mutate({ title: bookTitle })}
+                disabled={!bookTitle.trim() || createBookMutation.isPending}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 disabled:opacity-50"
+              >
+                {createBookMutation.isPending ? "创建中..." : "创建"}
+              </button>
+              <button onClick={() => setIsCreatingBook(false)} className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-300">
+                取消
+              </button>
+            </div>
+          </div>
+        )}
 
         {isCreating && (
           <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mb-6">
@@ -111,6 +160,29 @@ export default function ArticleListPage() {
         )}
 
         {isLoading && <p className="text-gray-400 text-sm">加载中...</p>}
+
+        {books && books.length > 0 && (
+          <div className="space-y-3 mb-3">
+            {books.map((book) => (
+              <Link
+                key={book.id} to={`/books/${book.id}`}
+                className="flex items-center justify-between bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0 text-xs bg-amber-50 text-amber-600 border border-amber-100 px-1.5 py-0.5 rounded font-medium">书</span>
+                    <h3 className="font-medium text-gray-800 truncate">{book.title}</h3>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {book.chapter_count} 章
+                    {book.read_chapter_order != null && ` · 读到第 ${book.read_chapter_order} 章`}
+                  </p>
+                </div>
+                <span className="text-gray-300 text-sm">📖</span>
+              </Link>
+            ))}
+          </div>
+        )}
 
         <div className="space-y-3">
           {articles?.map((article) => (
