@@ -1,14 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from sqlalchemy import select, nulls_last
+from sqlalchemy import func as sql_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.article import Article
+from app.models.book import Book
+from app.models.book_shelf import UserBookShelf
 from app.models.bookmark import UserLibraryBookmark
 from app.models.reading_history import UserReadingHistory
 from app.models.user import User
 from app.schemas.article import ArticleDetailResponse, LibraryArticleListItem
+from app.schemas.book import LibraryBookListItem
 from app.services import annotation_service, vocab_service
 
 router = APIRouter(tags=["library"])
@@ -180,3 +184,110 @@ async def remove_bookmark(
         await db.delete(bookmark)
         await db.commit()
     return {"bookmarked": False}
+
+
+@router.get("/library/books", response_model=list[LibraryBookListItem])
+async def list_library_books(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    books = list(await db.scalars(
+        select(Book).where(Book.is_library == True).order_by(Book.created_at.desc())  # noqa: E712
+    ))
+    if not books:
+        return []
+
+    book_ids = [b.id for b in books]
+
+    count_rows = await db.execute(
+        select(Article.book_id, sql_func.count(Article.id))
+        .where(Article.book_id.in_(book_ids))
+        .group_by(Article.book_id)
+    )
+    count_map = {bid: cnt for bid, cnt in count_rows.all()}
+
+    saved_ids = set(await db.scalars(
+        select(UserBookShelf.book_id).where(
+            UserBookShelf.user_id == current_user.id,
+            UserBookShelf.book_id.in_(book_ids),
+        )
+    ))
+
+    result = []
+    for b in books:
+        item = LibraryBookListItem.model_validate(b)
+        item.chapter_count = count_map.get(b.id, 0)
+        item.is_saved = b.id in saved_ids
+        result.append(item)
+    return result
+
+
+@router.get("/library/books/{book_id}", response_model=LibraryBookListItem)
+async def get_library_book(
+    book_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    book = await db.scalar(
+        select(Book).where(Book.id == book_id, Book.is_library == True)  # noqa: E712
+    )
+    if not book:
+        raise HTTPException(status_code=404, detail="Library book not found")
+
+    chapter_count = await db.scalar(
+        select(sql_func.count(Article.id)).where(Article.book_id == book_id)
+    ) or 0
+
+    is_saved = bool(await db.scalar(
+        select(UserBookShelf).where(
+            UserBookShelf.user_id == current_user.id,
+            UserBookShelf.book_id == book_id,
+        )
+    ))
+
+    item = LibraryBookListItem.model_validate(book)
+    item.chapter_count = chapter_count
+    item.is_saved = is_saved
+    return item
+
+
+@router.post("/library/books/{book_id}/save", status_code=201)
+async def save_library_book(
+    book_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    book = await db.scalar(
+        select(Book).where(Book.id == book_id, Book.is_library == True)  # noqa: E712
+    )
+    if not book:
+        raise HTTPException(status_code=404, detail="Library book not found")
+
+    existing = await db.scalar(
+        select(UserBookShelf).where(
+            UserBookShelf.user_id == current_user.id,
+            UserBookShelf.book_id == book_id,
+        )
+    )
+    if not existing:
+        db.add(UserBookShelf(user_id=current_user.id, book_id=book_id))
+        await db.commit()
+    return {"saved": True}
+
+
+@router.delete("/library/books/{book_id}/save", status_code=200)
+async def unsave_library_book(
+    book_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    shelf_entry = await db.scalar(
+        select(UserBookShelf).where(
+            UserBookShelf.user_id == current_user.id,
+            UserBookShelf.book_id == book_id,
+        )
+    )
+    if shelf_entry:
+        await db.delete(shelf_entry)
+        await db.commit()
+    return {"saved": False}
