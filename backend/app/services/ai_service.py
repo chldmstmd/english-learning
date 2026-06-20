@@ -56,16 +56,13 @@ _ANALYSIS_PROMPT = (
 
 _BATCH_TRANSLATION_PROMPT = (
     "你是专业英中词汇翻译助手。\n"
-    "下面是一篇英文文章和按顺序排列的单词列表。\n"
-    "请根据上下文，为每个单词提供最符合语境的中文翻译（2-6个中文字）。\n"
-    "对于虚词（the, a, is, are, was, were, be, to, of, in, on, at, for, and, or, but, "
-    "that, this, it, not, no, do, does, did, have, has, had, will, would, can, could, "
-    "shall, should, may, might, must, if, you, we, they, he, she, his, her, its, "
-    "my, your, our, their, me, him, us, them, an, so, as）翻译为空字符串。\n\n"
-    "严格按照输入顺序返回一个JSON数组，数组长度必须等于单词数量（{word_count}个），"
-    "每项是对应单词的翻译字符串。不要遗漏任何一项。\n\n"
-    "文章全文：\n{article_text}\n\n"
-    "单词列表（共{word_count}个）：\n{word_list}"
+    "下面是一篇英文文章，以及按句子分组的待翻译词汇。\n"
+    "根据每个词所在句子的上下文，提供最准确的中文翻译（2-6个中文字）。\n"
+    "虚词（冠词、介词、系动词、助动词、代词等）翻译为空字符串\"\"。\n\n"
+    "以JSON对象返回结果，key格式为\"句子序号_词序号\"（如\"0_1\"），value为翻译字符串。\n"
+    "每个词必须有对应的key，不可遗漏。只返回JSON，不要其他内容。\n\n"
+    "文章全文（供整体理解）：\n{article_text}\n\n"
+    "待翻译词汇（按句子分组）：\n{sentence_blocks}"
 )
 
 # --- OpenAI client ---
@@ -136,26 +133,40 @@ async def analyze_word(word: str, sentence: str) -> str:
     return result["analysis"]
 
 
-async def batch_translate_article(article_text: str, word_texts: list[str]) -> list[str]:
+async def batch_translate_article(
+    article_text: str,
+    word_entries: list[tuple[int, int, str]],  # [(sentence_index, word_index, text), ...]
+    sentences: list[dict],                      # [{"index": 0, "text": "..."}, ...]
+) -> dict[str, str]:
     """
-    Translate all words in an article at once.
-    word_texts: ordered list of word surface forms (e.g. ["The", "scientists", "discovered", ...])
-    Returns: ordered list of translations (same length as input), empty string for function words.
+    Translate all words in an article using sentence-grouped context.
+    Returns dict mapping "si_wi" keys to translation strings.
     """
-    word_list_str = json.dumps(word_texts, ensure_ascii=False)
+    # Group words by sentence
+    from collections import defaultdict
+    by_sentence: dict[int, list[tuple[int, str]]] = defaultdict(list)
+    for si, wi, text in word_entries:
+        by_sentence[si].append((wi, text))
+
+    sentence_text_map = {s["index"]: s["text"] for s in sentences}
+
+    # Build the sentence-grouped block
+    blocks = []
+    for si in sorted(by_sentence):
+        sentence_text = sentence_text_map.get(si, "")
+        words_repr = ", ".join(f'"{wi}_{text}"' for wi, text in sorted(by_sentence[si]))
+        blocks.append(f'句子{si}（"{sentence_text}"）：{words_repr}')
+    sentence_blocks = "\n".join(blocks)
+
     prompt = _BATCH_TRANSLATION_PROMPT.format(
         article_text=article_text,
-        word_list=word_list_str,
-        word_count=len(word_texts),
+        sentence_blocks=sentence_blocks,
     )
     provider = _get_provider()
 
     if provider == "openai":
-        # OpenAI json_object mode requires object, not array
-        openai_prompt = prompt + '\n\n注意：将结果包装为JSON对象格式：{"translations": [...]}'
-        text = await _openai_chat(openai_prompt, max_tokens=16000, temperature=0.1, timeout=180.0)
-        parsed = json.loads(text)
-        translations = parsed["translations"] if isinstance(parsed, dict) else parsed
+        text = await _openai_chat(prompt, max_tokens=16000, temperature=0.1, timeout=180.0)
+        result = json.loads(text)
     else:
         response = await asyncio.wait_for(
             _gemini_client.aio.models.generate_content(
@@ -163,11 +174,9 @@ async def batch_translate_article(article_text: str, word_texts: list[str]) -> l
             ),
             timeout=60.0,
         )
-        translations = json.loads(response.text)
+        result = json.loads(response.text)
 
-    # Validate length
-    if len(translations) != len(word_texts):
-        raise ValueError(
-            f"Translation count mismatch: expected {len(word_texts)}, got {len(translations)}"
-        )
-    return translations
+    # Normalise: keys may come back as "si_wi" or nested; flatten to "si_wi" -> str
+    if not isinstance(result, dict):
+        raise ValueError(f"Expected dict response, got {type(result)}")
+    return {str(k): str(v) for k, v in result.items()}

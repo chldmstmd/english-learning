@@ -31,47 +31,42 @@ async def translate_article(article_id: str) -> None:
             logger.error("Article %s not found for batch translation", article_id)
             return
 
-        # Only skip if already processing or done
         if article.translation_status in ("processing", "done"):
             return
 
         await _set_status(db, article_id, "processing")
 
         try:
-            # Build ordered word list from tokens (alpha only)
-            word_entries = []  # [(sentence_index, word_index, text, lemma)]
-            for token in article.tokens:
-                if token["is_alpha"]:
-                    word_entries.append((
-                        token["sentence_index"],
-                        token["index"],
-                        token["text"],
-                        token["lemma"],
-                    ))
+            # Build word entries: [(sentence_index, word_index, text, lemma)]
+            word_entries = [
+                (token["sentence_index"], token["index"], token["text"], token["lemma"])
+                for token in article.tokens
+                if token["is_alpha"]
+            ]
 
             if not word_entries:
                 await _set_status(db, article_id, "done")
                 return
 
-            # Check if translations already exist (idempotency)
+            # Check idempotency
             existing_count = await db.scalar(
-                select(func.count()).where(
-                    ArticleTranslation.article_id == article_id
-                )
+                select(func.count()).where(ArticleTranslation.article_id == article_id)
             )
             if existing_count and existing_count >= len(word_entries):
                 await _set_status(db, article_id, "done")
                 return
 
-            # Call AI with just the word texts (ordered)
-            word_texts = [entry[2] for entry in word_entries]
+            # Call AI with sentence-grouped context
+            ai_entries = [(si, wi, text) for si, wi, text, _ in word_entries]
             translations = await ai_service.batch_translate_article(
-                article.raw_text, word_texts
+                article.raw_text, ai_entries, article.sentences
             )
 
-            # Zip translations with position info (indexing done here)
+            # Build DB rows — key format is "si_wi"
             values = []
-            for (si, wi, word, lemma), translation in zip(word_entries, translations):
+            for si, wi, word, lemma in word_entries:
+                key = f"{si}_{wi}"
+                translation = translations.get(key, "")
                 values.append({
                     "article_id": article_id,
                     "sentence_index": si,
