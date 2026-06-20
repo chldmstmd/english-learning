@@ -62,7 +62,7 @@ async def list_books(
     if shelf_book_ids:
         shelf_books = list(await db.scalars(
             select(Book)
-            .where(Book.id.in_(shelf_book_ids))
+            .where(Book.id.in_(shelf_book_ids), Book.is_library == True)  # noqa: E712
             .order_by(Book.created_at.desc())
         ))
 
@@ -158,21 +158,19 @@ async def get_book(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    book = await db.scalar(
-        select(Book).where(Book.id == book_id, Book.user_id == current_user.id)
-    )
+    book = await db.scalar(select(Book).where(Book.id == book_id))
     if not book:
-        # also allow access if user has this book on their shelf
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    if book.user_id != current_user.id:
         shelf_entry = await db.scalar(
             select(UserBookShelf).where(
                 UserBookShelf.user_id == current_user.id,
                 UserBookShelf.book_id == book_id,
             )
         )
-        if shelf_entry:
-            book = await db.scalar(select(Book).where(Book.id == book_id))
-    if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
+        if not shelf_entry:
+            raise HTTPException(status_code=404, detail="Book not found")
 
     chapters = list(await db.scalars(
         select(Article)
