@@ -6,6 +6,8 @@ import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
 import type { AppSettings } from "../types";
 
+const ADMIN_ROLES = ["content_admin", "super_admin"];
+
 function Toggle({
   checked,
   onChange,
@@ -105,6 +107,18 @@ export function PageNav() {
             >
               生词表
             </Link>
+            {user && ADMIN_ROLES.includes(user.role) && (
+              <Link
+                to="/admin"
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  pathname.startsWith("/admin")
+                    ? "bg-gray-100 text-gray-900"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                管理
+              </Link>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
