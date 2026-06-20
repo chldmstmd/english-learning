@@ -49,6 +49,40 @@ export interface ArticleDetail {
   difficulty?: "level1" | "level2" | null;
   published_at?: string | null;
   translation_status?: "pending" | "processing" | "done" | "failed";
+  book_id?: string | null;
+  chapter_order?: number | null;
+  prev_article_id?: string | null;
+  next_article_id?: string | null;
+  last_sentence_index?: number | null;
+}
+
+export interface BookListItem {
+  id: string;
+  title: string;
+  cover_image_url: string | null;
+  source_category: string | null;
+  created_at: string;
+  chapter_count: number;
+  read_chapter_order: number | null;
+}
+
+export interface ChapterListItem {
+  id: string;
+  title: string;
+  chapter_order: number;
+  word_count: number;
+  last_sentence_index: number | null;
+}
+
+export interface BookDetail {
+  id: string;
+  title: string;
+  cover_image_url: string | null;
+  source_category: string | null;
+  created_at: string;
+  chapters: ChapterListItem[];
+  continue_article_id: string | null;
+  continue_sentence_index: number | null;
 }
 
 export type Difficulty = "level1" | "level2";
