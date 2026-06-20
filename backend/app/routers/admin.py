@@ -1,13 +1,14 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete as sa_delete, select
+from sqlalchemy import delete as sa_delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import require_content_admin
 from app.models.annotation import ArticleAnnotation
 from app.models.article import Article
+from app.models.book import Book
 from app.models.bookmark import UserLibraryBookmark
 from app.models.reading_history import UserReadingHistory
 from app.models.sync_log import VoaSyncLog
@@ -15,8 +16,10 @@ from app.models.user import User
 from app.schemas.article import (
     AdminArticleCreateRequest,
     AdminArticlePatchRequest,
+    ArticleListItem,
     LibraryArticleListItem,
 )
+from app.schemas.book import BookCreateRequest, ChapterCreateRequest, LibraryBookListItem
 from app.services import batch_translation_service, nlp_service, voa_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -120,5 +123,97 @@ async def delete_library_article(
     await db.execute(sa_delete(ArticleAnnotation).where(ArticleAnnotation.article_id == article_id))
     await db.execute(sa_delete(UserReadingHistory).where(UserReadingHistory.article_id == article_id))
     await db.execute(sa_delete(UserLibraryBookmark).where(UserLibraryBookmark.article_id == article_id))
+    await db.delete(article)
+    await db.commit()
+
+
+@router.post("/library/books", response_model=LibraryBookListItem, status_code=201)
+async def create_library_book(
+    body: BookCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_content_admin),
+):
+    book = Book(
+        user_id=current_user.id,
+        title=body.title,
+        cover_image_url=body.cover_image_url,
+        source_category=body.source_category,
+        is_library=True,
+    )
+    db.add(book)
+    await db.commit()
+    item = LibraryBookListItem.model_validate(book)
+    item.chapter_count = 0
+    return item
+
+
+@router.delete("/library/books/{book_id}", status_code=204)
+async def delete_library_book(
+    book_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_content_admin),
+):
+    book = await db.scalar(
+        select(Book).where(Book.id == book_id, Book.is_library == True)  # noqa: E712
+    )
+    if not book:
+        raise HTTPException(status_code=404, detail="Library book not found")
+
+    await db.execute(sa_delete(Article).where(Article.book_id == book_id))
+    await db.delete(book)
+    await db.commit()
+
+
+@router.post("/library/books/{book_id}/chapters", response_model=ArticleListItem, status_code=201)
+async def add_library_chapter(
+    book_id: str,
+    body: ChapterCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_content_admin),
+):
+    book = await db.scalar(
+        select(Book).where(Book.id == book_id, Book.is_library == True)  # noqa: E712
+    )
+    if not book:
+        raise HTTPException(status_code=404, detail="Library book not found")
+
+    tokens, sentences, word_count = nlp_service.tokenize(body.raw_text)
+    if word_count > 10000:
+        raise HTTPException(status_code=400, detail="Chapter exceeds 10,000 word limit")
+
+    max_order = await db.scalar(
+        select(func.max(Article.chapter_order)).where(Article.book_id == book_id)
+    )
+    next_order = (max_order or 0) + 1
+
+    article = Article(
+        user_id=current_user.id,
+        title=body.title,
+        raw_text=body.raw_text,
+        tokens=tokens,
+        sentences=sentences,
+        word_count=word_count,
+        book_id=book_id,
+        chapter_order=next_order,
+    )
+    db.add(article)
+    await db.commit()
+    asyncio.create_task(batch_translation_service.translate_article(article.id))
+    return ArticleListItem.model_validate(article)
+
+
+@router.delete("/library/books/{book_id}/chapters/{chapter_id}", status_code=204)
+async def delete_library_chapter(
+    book_id: str,
+    chapter_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_content_admin),
+):
+    article = await db.scalar(
+        select(Article).where(Article.id == chapter_id, Article.book_id == book_id)
+    )
+    if not article:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+
     await db.delete(article)
     await db.commit()
