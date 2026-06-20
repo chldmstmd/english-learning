@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -27,6 +27,7 @@ class ArticleListItem(BaseModel):
     is_library: bool = False
     source_category: str | None = None
     difficulty: str | None = None
+    translation_status: Literal["untranslated", "processing", "done", "stale", "failed"] = "untranslated"
 
     model_config = {"from_attributes": True}
 
@@ -40,6 +41,8 @@ class LibraryArticleListItem(BaseModel):
     published_at: datetime | None
     cover_image_url: str | None
     source_url: str | None
+    translation_status: Literal["untranslated", "processing", "done", "stale", "failed"] = "untranslated"
+    raw_text: str = ""
     created_at: datetime
     # Populated per-request by the router (not ORM fields)
     is_bookmarked: bool = False
@@ -90,5 +93,6 @@ class AdminArticleCreateRequest(BaseModel):
 
 class AdminArticlePatchRequest(BaseModel):
     title: str | None = None
+    raw_text: str | None = None
     difficulty: str | None = None
     source_category: str | None = None

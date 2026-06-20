@@ -31,8 +31,8 @@ async def translate_article(article_id: str) -> None:
             logger.error("Article %s not found for batch translation", article_id)
             return
 
-        # Skip if already done
-        if article.translation_status == "done":
+        # Only skip if already processing or done
+        if article.translation_status in ("processing", "done"):
             return
 
         await _set_status(db, article_id, "processing")

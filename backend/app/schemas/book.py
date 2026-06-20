@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -33,6 +34,7 @@ class ChapterListItem(BaseModel):
     chapter_order: int
     word_count: int
     last_sentence_index: int | None = None
+    translation_status: Literal["untranslated", "processing", "done", "stale", "failed"] = "untranslated"
 
     model_config = {"from_attributes": True}
 
@@ -58,3 +60,8 @@ class LibraryBookListItem(BaseModel):
     is_saved: bool = False          # populated per-request
 
     model_config = {"from_attributes": True}
+
+
+class ChapterPatchRequest(BaseModel):
+    title: str | None = None
+    raw_text: str | None = None

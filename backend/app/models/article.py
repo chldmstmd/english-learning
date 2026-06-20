@@ -26,7 +26,7 @@ class Article(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # V1.1: Content library fields (null for user-uploaded articles)
-    # source: "user_upload" | "voa"
+    # source: "user_upload" | "library"
     source: Mapped[str] = mapped_column(String(32), nullable=False, server_default="user_upload")
     # is_library=True means public shared article; False means user's private article
     is_library: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
@@ -38,7 +38,7 @@ class Article(Base):
     cover_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Batch translation status: pending | processing | done | failed
     translation_status: Mapped[str] = mapped_column(
-        String(16), nullable=False, server_default="pending"
+        String(16), nullable=False, server_default="untranslated"
     )
     # V1.2: Book/chapter fields (null for standalone articles)
     book_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)

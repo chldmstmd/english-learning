@@ -31,6 +31,7 @@ export interface ArticleListItem {
   is_library?: boolean;
   source_category?: string | null;
   difficulty?: Difficulty | null;
+  translation_status?: TranslationStatus;
 }
 
 export interface ArticleDetail {
@@ -41,7 +42,7 @@ export interface ArticleDetail {
   word_count: number;
   annotations: Record<string, Annotation>;
   word_statuses: Record<string, WordStatus>;
-  // Library metadata (present for VOA articles)
+  // Library metadata (present for library articles)
   is_library?: boolean;
   is_bookmarked?: boolean;
   source_url?: string | null;
@@ -73,6 +74,7 @@ export interface ChapterListItem {
   chapter_order: number;
   word_count: number;
   last_sentence_index: number | null;
+  translation_status: TranslationStatus;
 }
 
 export interface BookDetail {
@@ -97,6 +99,7 @@ export interface LibraryBookListItem {
 }
 
 export type Difficulty = "level1" | "level2";
+export type TranslationStatus = "untranslated" | "processing" | "done" | "stale" | "failed";
 
 export interface LibraryArticleListItem {
   id: string;
@@ -107,6 +110,8 @@ export interface LibraryArticleListItem {
   published_at: string | null;
   cover_image_url: string | null;
   source_url: string | null;
+  translation_status: TranslationStatus;
+  raw_text: string;
   created_at: string;
   is_bookmarked: boolean;
   read_at: string | null;
