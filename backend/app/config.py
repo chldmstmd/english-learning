@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     database_url: str = Field(..., alias="DATABASE_URL")
     secret_key: str = Field("change-this-in-production-use-env-var", alias="SECRET_KEY")
     access_token_expire_days: int = 7
+    admin_email: str | None = Field(None, alias="ADMIN_EMAIL")
 
     model_config = {"env_file": ".env", "populate_by_name": True}
 
