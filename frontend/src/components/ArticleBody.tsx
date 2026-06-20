@@ -26,15 +26,19 @@ export const ArticleBody: React.FC<Props> = ({ tokens, sentences, articleId, aut
       className="leading-loose text-lg text-gray-800 font-serif"
       onClick={handleBodyClick}
     >
-      {tokens.map((token) => (
-        <WordToken
-          key={token.index}
-          token={token}
-          articleId={articleId}
-          sentences={sentences}
-          autoOpenSidebar={autoOpenSidebar}
-        />
-      ))}
+      {tokens.map((token, i) => {
+        const isSentenceStart = i === 0 || tokens[i - 1].sentence_index !== token.sentence_index;
+        return (
+          <span key={token.index} data-sentence-index={isSentenceStart ? token.sentence_index : undefined}>
+            <WordToken
+              token={token}
+              articleId={articleId}
+              sentences={sentences}
+              autoOpenSidebar={autoOpenSidebar}
+            />
+          </span>
+        );
+      })}
     </div>
   );
 };

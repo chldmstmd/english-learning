@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { api } from "../api/client";
 import { useVocabStore } from "../store/vocabStore";
@@ -35,6 +35,39 @@ export default function ArticleReaderPage() {
       initFromArticle(article.id, article.word_statuses, article.annotations);
     }
   }, [article]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Restore scroll to last read sentence on load
+  useEffect(() => {
+    if (article && article.last_sentence_index && article.last_sentence_index > 0) {
+      const t = setTimeout(() => {
+        const el = document.querySelector(`[data-sentence-index="${article.last_sentence_index}"]`);
+        el?.scrollIntoView({ behavior: "auto", block: "center" });
+      }, 100);
+      return () => clearTimeout(t);
+    }
+  }, [article]);
+
+  const progressMutation = useMutation({
+    mutationFn: (body: { last_sentence_index: number }) =>
+      api.put(`articles/${id}/progress`, { json: body }),
+  });
+
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const anchors = container.querySelectorAll("[data-sentence-index]");
+      const top = container.getBoundingClientRect().top;
+      let current = 0;
+      for (const a of Array.from(anchors)) {
+        if (a.getBoundingClientRect().top <= top + 80) {
+          current = Number((a as HTMLElement).dataset.sentenceIndex);
+        } else break;
+      }
+      if (id) progressMutation.mutate({ last_sentence_index: current });
+    }, 600);
+  };
 
   // Poll for pending annotations (every 2s until all done)
   const hasPending = useMemo(() => {
@@ -78,7 +111,7 @@ export default function ArticleReaderPage() {
   return (
     <div className="flex h-screen bg-white">
       {/* Main reading area */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" onScroll={handleScroll}>
         {/* Top bar */}
         <div className="sticky top-0 bg-white/90 backdrop-blur border-b border-gray-100 px-6 py-3 flex items-center gap-3 z-10">
           <Link
@@ -106,6 +139,18 @@ export default function ArticleReaderPage() {
             articleId={article.id}
             autoOpenSidebar={settings?.auto_open_sidebar_on_mark ?? true}
           />
+
+          {article.book_id && (
+            <div className="flex items-center justify-between mt-12 pt-6 border-t border-gray-100">
+              {article.prev_article_id ? (
+                <Link to={`/articles/${article.prev_article_id}`} className="text-sm text-blue-500 hover:text-blue-600">← 上一章</Link>
+              ) : <span />}
+              <Link to={`/books/${article.book_id}`} className="text-xs text-gray-400 hover:text-gray-600">目录</Link>
+              {article.next_article_id ? (
+                <Link to={`/articles/${article.next_article_id}`} className="text-sm text-blue-500 hover:text-blue-600">下一章 →</Link>
+              ) : <span />}
+            </div>
+          )}
         </div>
       </div>
 
