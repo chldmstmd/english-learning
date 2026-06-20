@@ -134,7 +134,6 @@ export interface VocabDetail {
   status: WordStatus;
   context_translation: string | null;
   source_sentence: string | null;
-  ai_analysis: string | null;
   definitions: Array<{
     pos: string;
     definition: string;

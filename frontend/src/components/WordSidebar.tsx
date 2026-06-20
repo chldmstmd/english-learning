@@ -100,16 +100,6 @@ export const WordSidebar: React.FC = () => {
               <p className="text-sm text-gray-400 animate-pulse">加载中...</p>
             )}
 
-            {/* AI contextual analysis */}
-            {detail?.ai_analysis && (
-              <section>
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-                  语境解析
-                </h3>
-                <p className="text-sm text-gray-700 leading-relaxed">{detail.ai_analysis}</p>
-              </section>
-            )}
-
             {/* Dictionary definitions */}
             {detail?.definitions && detail.definitions.length > 0 && (
               <section>

@@ -1,5 +1,3 @@
-import asyncio
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,7 +5,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.vocab import VocabDetailResponse, VocabItem, VocabStatusUpdate
-from app.services import ai_service, dict_service, vocab_service
+from app.services import dict_service, vocab_service
 
 router = APIRouter(tags=["vocab"])
 
@@ -57,7 +55,6 @@ async def delete_vocab(
 @router.get("/vocab/{word}/detail", response_model=VocabDetailResponse)
 async def get_vocab_detail(
     word: str,
-    sentence: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -65,16 +62,10 @@ async def get_vocab_detail(
     if not vocab:
         raise HTTPException(status_code=404, detail="Word not found in vocabulary")
 
-    source_sentence = sentence or vocab.source_sentence or ""
-
-    dict_result, analysis_result = await asyncio.gather(
-        dict_service.get_word_data(word),
-        _safe_analyze(word, source_sentence),
-        return_exceptions=True,
-    )
-
-    dict_data = dict_result if not isinstance(dict_result, Exception) else {"phonetic": None, "definitions": []}
-    ai_analysis = analysis_result if not isinstance(analysis_result, Exception) else None
+    try:
+        dict_data = await dict_service.get_word_data(word)
+    except Exception:
+        dict_data = {"phonetic": None, "definitions": []}
 
     return VocabDetailResponse(
         word=vocab.word,
@@ -82,15 +73,5 @@ async def get_vocab_detail(
         status=vocab.status,
         context_translation=vocab.context_translation,
         source_sentence=vocab.source_sentence,
-        ai_analysis=ai_analysis,
         definitions=dict_data["definitions"],
     )
-
-
-async def _safe_analyze(word: str, sentence: str) -> str | None:
-    if not sentence:
-        return None
-    try:
-        return await ai_service.analyze_word(word, sentence)
-    except Exception:
-        return None

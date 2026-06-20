@@ -27,5 +27,4 @@ class VocabDetailResponse(BaseModel):
     status: str
     context_translation: str | None
     source_sentence: str | None
-    ai_analysis: str | None
     definitions: list[dict]
