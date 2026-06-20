@@ -11,6 +11,7 @@ from app.models.article import Article
 from app.models.book import Book
 from app.models.reading_history import UserReadingHistory
 from app.models.user import User
+from app.models.book_shelf import UserBookShelf
 from app.schemas.article import ArticleListItem
 from app.schemas.book import (
     BookCreateRequest,
@@ -48,17 +49,29 @@ async def list_books(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    books = list(await db.scalars(
+    own_books = list(await db.scalars(
         select(Book)
-        .where(Book.user_id == current_user.id)
+        .where(Book.user_id == current_user.id, Book.is_library == False)  # noqa: E712
         .order_by(Book.created_at.desc())
     ))
-    if not books:
+
+    shelf_book_ids = list(await db.scalars(
+        select(UserBookShelf.book_id).where(UserBookShelf.user_id == current_user.id)
+    ))
+    shelf_books = []
+    if shelf_book_ids:
+        shelf_books = list(await db.scalars(
+            select(Book)
+            .where(Book.id.in_(shelf_book_ids))
+            .order_by(Book.created_at.desc())
+        ))
+
+    all_books = own_books + shelf_books
+    if not all_books:
         return []
 
-    book_ids = [b.id for b in books]
+    book_ids = [b.id for b in all_books]
 
-    # chapter counts per book
     count_rows = await db.execute(
         select(Article.book_id, func.count(Article.id))
         .where(Article.book_id.in_(book_ids))
@@ -66,7 +79,6 @@ async def list_books(
     )
     count_map = {bid: cnt for bid, cnt in count_rows.all()}
 
-    # last-read chapter per book (max chapter_order among read chapters)
     read_rows = await db.execute(
         select(UserReadingHistory.book_id, Article.chapter_order)
         .join(Article, Article.id == UserReadingHistory.article_id)
@@ -80,11 +92,13 @@ async def list_books(
         if order is not None and (bid not in read_map or order > read_map[bid]):
             read_map[bid] = order
 
+    shelf_id_set = set(shelf_book_ids)
     result = []
-    for b in books:
+    for b in all_books:
         item = BookListItem.model_validate(b)
         item.chapter_count = count_map.get(b.id, 0)
         item.read_chapter_order = read_map.get(b.id)
+        item.is_from_library = b.id in shelf_id_set
         result.append(item)
     return result
 
@@ -147,6 +161,16 @@ async def get_book(
     book = await db.scalar(
         select(Book).where(Book.id == book_id, Book.user_id == current_user.id)
     )
+    if not book:
+        # also allow access if user has this book on their shelf
+        shelf_entry = await db.scalar(
+            select(UserBookShelf).where(
+                UserBookShelf.user_id == current_user.id,
+                UserBookShelf.book_id == book_id,
+            )
+        )
+        if shelf_entry:
+            book = await db.scalar(select(Book).where(Book.id == book_id))
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
 
