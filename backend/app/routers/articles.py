@@ -227,6 +227,7 @@ async def get_article(
         word_count=article.word_count,
         annotations=annotations,
         word_statuses=article_word_statuses,
+        translation_status=article.translation_status,
         book_id=article.book_id,
         chapter_order=article.chapter_order,
         prev_article_id=prev_article_id,

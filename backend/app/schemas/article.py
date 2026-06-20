@@ -73,7 +73,7 @@ class ArticleDetailResponse(BaseModel):
     source_category: str | None = None
     difficulty: str | None = None
     published_at: datetime | None = None
-    translation_status: str = "pending"
+    translation_status: Literal["untranslated", "processing", "done", "stale", "failed"] = "untranslated"
     # Chapter context (null for standalone articles)
     book_id: str | None = None
     chapter_order: int | None = None

@@ -49,7 +49,7 @@ export interface ArticleDetail {
   source_category?: string | null;
   difficulty?: "level1" | "level2" | null;
   published_at?: string | null;
-  translation_status?: "pending" | "processing" | "done" | "failed";
+  translation_status?: TranslationStatus;
   book_id?: string | null;
   chapter_order?: number | null;
   prev_article_id?: string | null;
