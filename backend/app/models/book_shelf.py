@@ -8,7 +8,7 @@ from app.database import Base
 
 
 class UserBookShelf(Base):
-    __tablename__ = "user_book_shelf"
+    __tablename__ = "user_book_shelves"
     __table_args__ = (UniqueConstraint("user_id", "book_id"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
