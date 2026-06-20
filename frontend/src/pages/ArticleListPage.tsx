@@ -57,6 +57,11 @@ export default function ArticleListPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["articles"] }),
   });
 
+  const unsaveBookMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`library/books/${id}/save`).json(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["books"] }),
+  });
+
   const unbookmarkMutation = useMutation({
     mutationFn: (id: string) => api.delete(`library/${id}/bookmark`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["articles"] }),
@@ -164,22 +169,35 @@ export default function ArticleListPage() {
         {books && books.length > 0 && (
           <div className="space-y-3 mb-3">
             {books.map((book) => (
-              <Link
-                key={book.id} to={`/books/${book.id}`}
-                className="flex items-center justify-between bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow"
-              >
-                <div className="min-w-0">
+              <div key={book.id} className="flex items-center justify-between bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
+                <Link to={`/books/${book.id}`} className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="shrink-0 text-xs bg-amber-50 text-amber-600 border border-amber-100 px-1.5 py-0.5 rounded font-medium">书</span>
+                    {book.is_from_library && (
+                      <span className="shrink-0 text-xs bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded font-medium">公共库</span>
+                    )}
                     <h3 className="font-medium text-gray-800 truncate">{book.title}</h3>
                   </div>
                   <p className="text-xs text-gray-400 mt-0.5">
                     {book.chapter_count} 章
                     {book.read_chapter_order != null && ` · 读到第 ${book.read_chapter_order} 章`}
                   </p>
-                </div>
-                <span className="text-gray-300 text-sm">📖</span>
-              </Link>
+                </Link>
+                {book.is_from_library ? (
+                  <button
+                    onClick={() => {
+                      if (confirm(`从书架移除「${book.title}」？\n随时可在内容库重新收藏。`)) {
+                        unsaveBookMutation.mutate(book.id);
+                      }
+                    }}
+                    className="ml-4 text-gray-300 hover:text-red-400 transition-colors text-sm"
+                  >
+                    移除
+                  </button>
+                ) : (
+                  <span className="text-gray-300 text-sm ml-4">📖</span>
+                )}
+              </div>
             ))}
           </div>
         )}
