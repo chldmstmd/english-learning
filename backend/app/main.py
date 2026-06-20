@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI):
     import app.models.reading_history  # noqa: F401
     import app.models.article_translation  # noqa: F401
     import app.models.book           # noqa: F401
+    import app.models.book_shelf      # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
