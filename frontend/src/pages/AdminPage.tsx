@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Pencil, Trash2, X } from "lucide-react";
 import { api } from "../api/client";
 import { PageNav } from "../components/PageNav";
-import type { LibraryArticleListItem } from "../types";
+import type { LibraryArticleListItem, LibraryBookListItem } from "../types";
 
 const CATEGORIES = [
   { value: "", label: "无分类" },
@@ -237,6 +237,269 @@ function ArticlesTab() {
   );
 }
 
+function BookChapterList({
+  bookId,
+  onDeleteChapter,
+}: {
+  bookId: string;
+  onDeleteChapter: (bookId: string, chapterId: string, title: string) => void;
+}) {
+  const { data: bookDetail, isLoading } = useQuery({
+    queryKey: ["library-book-detail", bookId],
+    queryFn: () => api.get(`library/books/${bookId}`).json<{ chapters: { id: string; title: string; chapter_order: number; word_count: number }[] }>(),
+  });
+
+  if (isLoading) return <p className="text-xs text-gray-400 px-8 pb-2">加载章节...</p>;
+  if (!bookDetail?.chapters?.length) return <p className="text-xs text-gray-400 px-8 pb-2">暂无章节</p>;
+
+  return (
+    <div className="bg-gray-50 px-8 pb-2">
+      {bookDetail.chapters.map((ch) => (
+        <div key={ch.id} className="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
+          <div>
+            <span className="text-xs text-gray-500 mr-2">Ch.{ch.chapter_order}</span>
+            <span className="text-xs text-gray-700">{ch.title}</span>
+            <span className="text-xs text-gray-400 ml-2">{ch.word_count.toLocaleString()} 词</span>
+          </div>
+          <button
+            onClick={() => onDeleteChapter(bookId, ch.id, ch.title)}
+            className="p-1 text-gray-300 hover:text-red-500 transition-colors"
+            title="删除章节"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type BookFormState = {
+  title: string;
+  cover_image_url: string;
+  source_category: string;
+};
+
+const EMPTY_BOOK_FORM: BookFormState = { title: "", cover_image_url: "", source_category: "" };
+
+type ChapterFormState = {
+  book_id: string;
+  title: string;
+  raw_text: string;
+};
+
+const EMPTY_CHAPTER_FORM: ChapterFormState = { book_id: "", title: "", raw_text: "" };
+
+function BooksTab() {
+  const queryClient = useQueryClient();
+  const [expandedBookId, setExpandedBookId] = useState<string | null>(null);
+  const [bookForm, setBookForm] = useState<BookFormState>(EMPTY_BOOK_FORM);
+  const [bookFormError, setBookFormError] = useState("");
+  const [chapterForm, setChapterForm] = useState<ChapterFormState>(EMPTY_CHAPTER_FORM);
+  const [chapterFormError, setChapterFormError] = useState("");
+
+  const { data: books, isLoading } = useQuery({
+    queryKey: ["library-books"],
+    queryFn: () => api.get("library/books").json<LibraryBookListItem[]>(),
+  });
+
+  const createBookMutation = useMutation({
+    mutationFn: (body: object) => api.post("admin/library/books", { json: body }).json(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["library-books"] });
+      setBookForm(EMPTY_BOOK_FORM);
+      setBookFormError("");
+    },
+    onError: async (err: any) => {
+      const msg = await err.response?.json().catch(() => null);
+      setBookFormError(msg?.detail ?? "创建失败");
+    },
+  });
+
+  const deleteBookMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`admin/library/books/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["library-books"] }),
+  });
+
+  const addChapterMutation = useMutation({
+    mutationFn: ({ bookId, body }: { bookId: string; body: object }) =>
+      api.post(`admin/library/books/${bookId}/chapters`, { json: body }).json(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["library-books"] });
+      setChapterForm(EMPTY_CHAPTER_FORM);
+      setChapterFormError("");
+    },
+    onError: async (err: any) => {
+      const msg = await err.response?.json().catch(() => null);
+      setChapterFormError(msg?.detail ?? "添加失败");
+    },
+  });
+
+  const deleteChapterMutation = useMutation({
+    mutationFn: ({ bookId, chapterId }: { bookId: string; chapterId: string }) =>
+      api.delete(`admin/library/books/${bookId}/chapters/${chapterId}`),
+    onSuccess: (_, { bookId }) => {
+      queryClient.invalidateQueries({ queryKey: ["library-books"] });
+      queryClient.invalidateQueries({ queryKey: ["library-book-detail", bookId] });
+    },
+  });
+
+  function handleDeleteBook(book: LibraryBookListItem) {
+    if (window.confirm(`确认删除图书「${book.title}」及其所有章节？此操作不可撤销。`)) {
+      deleteBookMutation.mutate(book.id);
+    }
+  }
+
+  function handleDeleteChapter(bookId: string, chapterId: string, chapterTitle: string) {
+    if (window.confirm(`确认删除章节「${chapterTitle}」？`)) {
+      deleteChapterMutation.mutate({ bookId, chapterId });
+    }
+  }
+
+  function handleBookSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setBookFormError("");
+    createBookMutation.mutate({
+      title: bookForm.title,
+      cover_image_url: bookForm.cover_image_url || null,
+      source_category: bookForm.source_category || null,
+    });
+  }
+
+  function handleChapterSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setChapterFormError("");
+    if (!chapterForm.book_id) {
+      setChapterFormError("请选择图书");
+      return;
+    }
+    addChapterMutation.mutate({
+      bookId: chapterForm.book_id,
+      body: { title: chapterForm.title, raw_text: chapterForm.raw_text },
+    });
+  }
+
+  return (
+    <div className="flex gap-6 mt-6">
+      {/* Left: book list */}
+      <div className="w-1/2 overflow-y-auto max-h-[70vh] border border-gray-100 rounded-xl">
+        {isLoading && <p className="text-sm text-gray-400 p-4">加载中...</p>}
+        {!isLoading && (!books || books.length === 0) && (
+          <p className="text-sm text-gray-400 p-4">暂无图书</p>
+        )}
+        {books?.map((book) => (
+          <div key={book.id} className="border-b border-gray-50 last:border-0">
+            <div
+              className="flex items-center justify-between p-3 hover:bg-gray-50 cursor-pointer"
+              onClick={() => setExpandedBookId(expandedBookId === book.id ? null : book.id)}
+            >
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                {expandedBookId === book.id ? <ChevronDown size={14} className="text-gray-400 shrink-0" /> : <ChevronRight size={14} className="text-gray-400 shrink-0" />}
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-800 line-clamp-1">{book.title}</p>
+                  <p className="text-xs text-gray-400">{book.chapter_count} 章</p>
+                </div>
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDeleteBook(book); }}
+                className="p-1.5 text-gray-400 hover:text-red-500 transition-colors shrink-0"
+                title="删除图书"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+            {expandedBookId === book.id && (
+              <BookChapterList bookId={book.id} onDeleteChapter={handleDeleteChapter} />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Right: forms */}
+      <div className="w-1/2 space-y-6">
+        {/* Create book form */}
+        <div>
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">新建图书</h2>
+          <form onSubmit={handleBookSubmit} className="space-y-3">
+            <input
+              type="text"
+              placeholder="书名"
+              value={bookForm.title}
+              onChange={(e) => setBookForm((f) => ({ ...f, title: e.target.value }))}
+              required
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            <input
+              type="url"
+              placeholder="封面图片 URL（选填）"
+              value={bookForm.cover_image_url}
+              onChange={(e) => setBookForm((f) => ({ ...f, cover_image_url: e.target.value }))}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            <select
+              value={bookForm.source_category}
+              onChange={(e) => setBookForm((f) => ({ ...f, source_category: e.target.value }))}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+            {bookFormError && <p className="text-xs text-red-500">{bookFormError}</p>}
+            <button
+              type="submit"
+              disabled={createBookMutation.isPending}
+              className="w-full py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
+            >
+              {createBookMutation.isPending ? "创建中..." : "创建图书"}
+            </button>
+          </form>
+        </div>
+
+        <div className="border-t border-gray-100 pt-6">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">添加章节</h2>
+          <form onSubmit={handleChapterSubmit} className="space-y-3">
+            <select
+              value={chapterForm.book_id}
+              onChange={(e) => setChapterForm((f) => ({ ...f, book_id: e.target.value }))}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+            >
+              <option value="">选择图书</option>
+              {books?.map((b) => (
+                <option key={b.id} value={b.id}>{b.title}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              placeholder="章节标题"
+              value={chapterForm.title}
+              onChange={(e) => setChapterForm((f) => ({ ...f, title: e.target.value }))}
+              required
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            <textarea
+              placeholder="章节正文（纯英文文本）"
+              value={chapterForm.raw_text}
+              onChange={(e) => setChapterForm((f) => ({ ...f, raw_text: e.target.value }))}
+              required
+              rows={10}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y font-mono"
+            />
+            {chapterFormError && <p className="text-xs text-red-500">{chapterFormError}</p>}
+            <button
+              type="submit"
+              disabled={addChapterMutation.isPending}
+              className="w-full py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
+            >
+              {addChapterMutation.isPending ? "添加中..." : "添加章节"}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [tab, setTab] = useState<"articles" | "books">("articles");
 
@@ -266,7 +529,7 @@ export default function AdminPage() {
         </div>
 
         {tab === "articles" && <ArticlesTab />}
-        {tab === "books" && <div className="mt-6 text-sm text-gray-400">图书管理 coming soon</div>}
+        {tab === "books" && <BooksTab />}
       </div>
     </div>
   );
