@@ -79,3 +79,16 @@ class ArticleDetailResponse(BaseModel):
     last_sentence_index: int | None = None
 
     model_config = {"from_attributes": True}
+
+
+class AdminArticleCreateRequest(BaseModel):
+    title: str
+    raw_text: str
+    difficulty: str | None = None
+    source_category: str | None = None
+
+
+class AdminArticlePatchRequest(BaseModel):
+    title: str | None = None
+    difficulty: str | None = None
+    source_category: str | None = None
