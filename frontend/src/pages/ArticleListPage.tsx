@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil, X } from "lucide-react";
 import { api } from "../api/client";
 import { PageNav } from "../components/PageNav";
 import type { ArticleListItem, BookListItem } from "../types";
@@ -55,6 +56,23 @@ export default function ArticleListPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`articles/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["articles"] }),
+  });
+
+  const [editingArticle, setEditingArticle] = useState<{ id: string; title: string; raw_text: string } | null>(null);
+  const [editError, setEditError] = useState("");
+
+  const editMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: { title: string; raw_text: string } }) =>
+      api.put(`articles/${id}`, { json: body }).json<ArticleListItem>(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["articles"] });
+      setEditingArticle(null);
+      setEditError("");
+    },
+    onError: async (err: any) => {
+      const msg = await err.response?.json().catch(() => null);
+      setEditError(msg?.detail ?? "保存失败");
+    },
   });
 
   const unsaveBookMutation = useMutation({
@@ -204,40 +222,91 @@ export default function ArticleListPage() {
 
         <div className="space-y-3">
           {articles?.map((article) => (
-            <div
-              key={article.id}
-              className="flex items-center justify-between bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow"
-            >
-              <Link
-                to={article.is_library ? `/library/${article.id}` : `/articles/${article.id}`}
-                className="flex-1 min-w-0"
-              >
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-medium text-gray-800 hover:text-blue-600 truncate">
-                    {article.title}
-                  </h3>
-                  {article.is_library && (
-                    <span className="shrink-0 text-xs bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded font-medium">
-                      VOA
-                    </span>
-                  )}
-                  {article.is_library && article.source_category && (
-                    <span className="shrink-0 text-xs text-gray-400">
-                      {CATEGORY_LABELS[article.source_category] ?? article.source_category}
-                    </span>
-                  )}
+            <div key={article.id}>
+              {editingArticle?.id === article.id && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-2">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-semibold text-blue-700">编辑文章</p>
+                    <button onClick={() => setEditingArticle(null)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
+                  </div>
+                  <input
+                    type="text"
+                    value={editingArticle.title}
+                    onChange={(e) => setEditingArticle((a) => a ? { ...a, title: e.target.value } : null)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    placeholder="文章标题"
+                  />
+                  <textarea
+                    value={editingArticle.raw_text}
+                    onChange={(e) => setEditingArticle((a) => a ? { ...a, raw_text: e.target.value } : null)}
+                    rows={8}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                    placeholder="文章正文"
+                  />
+                  {editError && <p className="text-xs text-red-500 mb-2">{editError}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => editMutation.mutate({ id: editingArticle.id, body: { title: editingArticle.title, raw_text: editingArticle.raw_text } })}
+                      disabled={editMutation.isPending}
+                      className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 disabled:opacity-50 transition-colors"
+                    >
+                      {editMutation.isPending ? "保存中..." : "保存"}
+                    </button>
+                    <button
+                      onClick={() => setEditingArticle(null)}
+                      className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-300 transition-colors"
+                    >
+                      取消
+                    </button>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {article.word_count.toLocaleString()} 词 ·{" "}
-                  {new Date(article.created_at).toLocaleDateString("zh-CN")}
-                </p>
-              </Link>
-              <button
-                onClick={() => handleRemove(article)}
-                className="ml-4 text-gray-300 hover:text-red-400 transition-colors text-sm"
-              >
-                {article.is_library ? "移除" : "删除"}
-              </button>
+              )}
+              <div className="flex items-center justify-between bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
+                <Link
+                  to={article.is_library ? `/library/${article.id}` : `/articles/${article.id}`}
+                  className="flex-1 min-w-0"
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-medium text-gray-800 hover:text-blue-600 truncate">
+                      {article.title}
+                    </h3>
+                    {article.is_library && (
+                      <span className="shrink-0 text-xs bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded font-medium">
+                        公共库
+                      </span>
+                    )}
+                    {article.is_library && article.source_category && (
+                      <span className="shrink-0 text-xs text-gray-400">
+                        {CATEGORY_LABELS[article.source_category] ?? article.source_category}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {article.word_count.toLocaleString()} 词 ·{" "}
+                    {new Date(article.created_at).toLocaleDateString("zh-CN")}
+                  </p>
+                </Link>
+                <div className="flex items-center gap-2 ml-4 shrink-0">
+                  {!article.is_library && (
+                    <button
+                      onClick={() => {
+                        setEditingArticle({ id: article.id, title: article.title, raw_text: "" });
+                        setEditError("");
+                      }}
+                      className="text-gray-300 hover:text-blue-400 transition-colors"
+                      title="编辑"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleRemove(article)}
+                    className="text-gray-300 hover:text-red-400 transition-colors text-sm"
+                  >
+                    {article.is_library ? "移除" : "删除"}
+                  </button>
+                </div>
+              </div>
             </div>
           ))}
         </div>

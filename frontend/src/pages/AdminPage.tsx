@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Pencil, Trash2, X } from "lucide-react";
 import { api } from "../api/client";
 import { PageNav } from "../components/PageNav";
-import type { LibraryArticleListItem, LibraryBookListItem } from "../types";
+import { TranslateConfirmModal } from "../components/TranslateConfirmModal";
+import type { LibraryArticleListItem, LibraryBookListItem, TranslationStatus } from "../types";
 
 const CATEGORIES = [
   { value: "", label: "无分类" },
@@ -18,6 +19,15 @@ const DIFFICULTIES = [
   { value: "level1", label: "Level 1 · 慢速" },
   { value: "level2", label: "Level 2 · 标准" },
 ];
+
+function TranslationStatusBadge({ status }: { status: TranslationStatus | undefined }) {
+  if (!status || status === "untranslated") return <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">未翻译</span>;
+  if (status === "processing") return <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">翻译中</span>;
+  if (status === "done") return <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">已翻译</span>;
+  if (status === "stale") return <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">已失效</span>;
+  if (status === "failed") return <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">失败</span>;
+  return null;
+}
 
 function DifficultyBadge({ difficulty }: { difficulty: string | null | undefined }) {
   if (!difficulty) return null;
@@ -35,6 +45,7 @@ type ArticleFormState = {
   editId: string | null;
   title: string;
   raw_text: string;
+  edit_raw_text: string;
   difficulty: string;
   source_category: string;
 };
@@ -44,6 +55,7 @@ const EMPTY_ARTICLE_FORM: ArticleFormState = {
   editId: null,
   title: "",
   raw_text: "",
+  edit_raw_text: "",
   difficulty: "",
   source_category: "",
 };
@@ -52,15 +64,17 @@ function ArticlesTab() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<ArticleFormState>(EMPTY_ARTICLE_FORM);
   const [formError, setFormError] = useState("");
+  const [translateTarget, setTranslateTarget] = useState<LibraryArticleListItem | null>(null);
 
   const { data: articles, isLoading } = useQuery({
-    queryKey: ["library", "", "", 1],
+    queryKey: ["admin-library-articles"],
     queryFn: () => api.get("library?page_size=100").json<LibraryArticleListItem[]>(),
   });
 
   const createMutation = useMutation({
     mutationFn: (body: object) => api.post("admin/library/articles", { json: body }).json(),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-library-articles"] });
       queryClient.invalidateQueries({ queryKey: ["library"] });
       setForm(EMPTY_ARTICLE_FORM);
       setFormError("");
@@ -75,6 +89,7 @@ function ArticlesTab() {
     mutationFn: ({ id, body }: { id: string; body: object }) =>
       api.patch(`admin/library/articles/${id}`, { json: body }).json(),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-library-articles"] });
       queryClient.invalidateQueries({ queryKey: ["library"] });
       setForm(EMPTY_ARTICLE_FORM);
       setFormError("");
@@ -87,7 +102,15 @@ function ArticlesTab() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`admin/library/articles/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["library"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-library-articles"] });
+      queryClient.invalidateQueries({ queryKey: ["library"] });
+    },
+  });
+
+  const translateMutation = useMutation({
+    mutationFn: (id: string) => api.post(`admin/library/articles/${id}/translate`).json(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-library-articles"] }),
   });
 
   function handleEdit(article: LibraryArticleListItem) {
@@ -96,6 +119,7 @@ function ArticlesTab() {
       editId: article.id,
       title: article.title,
       raw_text: "",
+      edit_raw_text: article.raw_text,
       difficulty: article.difficulty ?? "",
       source_category: article.source_category ?? "",
     });
@@ -123,6 +147,7 @@ function ArticlesTab() {
         id: form.editId,
         body: {
           title: form.title,
+          raw_text: form.edit_raw_text || null,
           difficulty: form.difficulty || null,
           source_category: form.source_category || null,
         },
@@ -154,7 +179,18 @@ function ArticlesTab() {
               <p className="text-sm font-medium text-gray-800 line-clamp-1">{a.title}</p>
               <p className="text-xs text-gray-400 mt-0.5">{a.word_count.toLocaleString()} 词</p>
             </div>
-            <div className="flex gap-1 shrink-0">
+            <div className="flex items-center gap-1 shrink-0">
+              <TranslationStatusBadge status={a.translation_status} />
+              {(a.translation_status === "untranslated" || a.translation_status === "stale" || a.translation_status === "failed") && (
+                <button
+                  onClick={() => setTranslateTarget(a)}
+                  disabled={translateMutation.isPending}
+                  className="p-1.5 text-gray-400 hover:text-blue-500 transition-colors"
+                  title={a.translation_status === "untranslated" ? "翻译" : a.translation_status === "stale" ? "重新翻译" : "重试"}
+                >
+                  ⚡
+                </button>
+              )}
               <button
                 onClick={() => handleEdit(a)}
                 className="p-1.5 text-gray-400 hover:text-blue-500 transition-colors"
@@ -173,6 +209,19 @@ function ArticlesTab() {
           </div>
         ))}
       </div>
+
+      {translateTarget && (
+        <TranslateConfirmModal
+          isOpen={true}
+          title={translateTarget.title}
+          wordCount={translateTarget.word_count}
+          onConfirm={() => {
+            translateMutation.mutate(translateTarget.id);
+            setTranslateTarget(null);
+          }}
+          onCancel={() => setTranslateTarget(null)}
+        />
+      )}
 
       {/* Right: create/edit form */}
       <div className="w-1/2">
@@ -195,12 +244,20 @@ function ArticlesTab() {
             required
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
           />
-          {form.mode === "create" && (
+          {form.mode === "create" ? (
             <textarea
               placeholder="正文（纯英文文本）"
               value={form.raw_text}
               onChange={(e) => setForm((f) => ({ ...f, raw_text: e.target.value }))}
               required
+              rows={12}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y font-mono"
+            />
+          ) : (
+            <textarea
+              placeholder="正文（留空则不修改）"
+              value={form.edit_raw_text}
+              onChange={(e) => setForm((f) => ({ ...f, edit_raw_text: e.target.value }))}
               rows={12}
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y font-mono"
             />
@@ -237,16 +294,22 @@ function ArticlesTab() {
   );
 }
 
+type ChapterItem = { id: string; title: string; chapter_order: number; word_count: number; translation_status: TranslationStatus; raw_text?: string };
+
 function BookChapterList({
   bookId,
   onDeleteChapter,
+  onTranslateChapter,
+  onEditChapter,
 }: {
   bookId: string;
   onDeleteChapter: (bookId: string, chapterId: string, title: string) => void;
+  onTranslateChapter: (bookId: string, chapter: ChapterItem) => void;
+  onEditChapter: (bookId: string, chapterId: string, title: string, rawText: string) => void;
 }) {
   const { data: bookDetail, isLoading } = useQuery({
     queryKey: ["library-book-detail", bookId],
-    queryFn: () => api.get(`library/books/${bookId}`).json<{ chapters: { id: string; title: string; chapter_order: number; word_count: number }[] }>(),
+    queryFn: () => api.get(`library/books/${bookId}`).json<{ chapters: ChapterItem[] }>(),
   });
 
   if (isLoading) return <p className="text-xs text-gray-400 px-8 pb-2">加载章节...</p>;
@@ -261,13 +324,30 @@ function BookChapterList({
             <span className="text-xs text-gray-700">{ch.title}</span>
             <span className="text-xs text-gray-400 ml-2">{ch.word_count.toLocaleString()} 词</span>
           </div>
-          <button
-            onClick={() => onDeleteChapter(bookId, ch.id, ch.title)}
-            className="p-1 text-gray-300 hover:text-red-500 transition-colors"
-            title="删除章节"
-          >
-            <Trash2 size={12} />
-          </button>
+          <div className="flex items-center gap-1">
+            <TranslationStatusBadge status={ch.translation_status} />
+            {(ch.translation_status === "untranslated" || ch.translation_status === "stale" || ch.translation_status === "failed") && (
+              <button
+                onClick={() => onTranslateChapter(bookId, ch)}
+                className="p-1 text-gray-400 hover:text-blue-500 transition-colors"
+                title="翻译"
+              >⚡</button>
+            )}
+            <button
+              onClick={() => onEditChapter(bookId, ch.id, ch.title, ch.raw_text ?? "")}
+              className="p-1 text-gray-400 hover:text-blue-500 transition-colors"
+              title="编辑章节"
+            >
+              <Pencil size={12} />
+            </button>
+            <button
+              onClick={() => onDeleteChapter(bookId, ch.id, ch.title)}
+              className="p-1 text-gray-300 hover:text-red-500 transition-colors"
+              title="删除章节"
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
         </div>
       ))}
     </div>
@@ -297,6 +377,9 @@ function BooksTab() {
   const [bookFormError, setBookFormError] = useState("");
   const [chapterForm, setChapterForm] = useState<ChapterFormState>(EMPTY_CHAPTER_FORM);
   const [chapterFormError, setChapterFormError] = useState("");
+  const [translateChapterTarget, setTranslateChapterTarget] = useState<{ bookId: string; chapter: ChapterItem } | null>(null);
+  const [editingChapter, setEditingChapter] = useState<{ bookId: string; chapterId: string; title: string; raw_text: string } | null>(null);
+  const [chapterEditError, setChapterEditError] = useState("");
 
   const { data: books, isLoading } = useQuery({
     queryKey: ["library-books"],
@@ -342,6 +425,29 @@ function BooksTab() {
     onSuccess: (_, { bookId }) => {
       queryClient.invalidateQueries({ queryKey: ["library-books"] });
       queryClient.invalidateQueries({ queryKey: ["library-book-detail", bookId] });
+    },
+  });
+
+  const translateChapterMutation = useMutation({
+    mutationFn: ({ bookId, chapterId }: { bookId: string; chapterId: string }) =>
+      api.post(`admin/library/books/${bookId}/chapters/${chapterId}/translate`).json(),
+    onSuccess: (_, { bookId }) => {
+      queryClient.invalidateQueries({ queryKey: ["library-book-detail", bookId] });
+      setTranslateChapterTarget(null);
+    },
+  });
+
+  const editChapterMutation = useMutation({
+    mutationFn: ({ bookId, chapterId, body }: { bookId: string; chapterId: string; body: object }) =>
+      api.patch(`admin/library/books/${bookId}/chapters/${chapterId}`, { json: body }).json(),
+    onSuccess: (_, { bookId }) => {
+      queryClient.invalidateQueries({ queryKey: ["library-book-detail", bookId] });
+      setEditingChapter(null);
+      setChapterEditError("");
+    },
+    onError: async (err: any) => {
+      const msg = await err.response?.json().catch(() => null);
+      setChapterEditError(msg?.detail ?? "保存失败");
     },
   });
 
@@ -410,7 +516,15 @@ function BooksTab() {
               </button>
             </div>
             {expandedBookId === book.id && (
-              <BookChapterList bookId={book.id} onDeleteChapter={handleDeleteChapter} />
+              <BookChapterList
+                bookId={book.id}
+                onDeleteChapter={handleDeleteChapter}
+                onTranslateChapter={(bookId, chapter) => setTranslateChapterTarget({ bookId, chapter })}
+                onEditChapter={(bookId, chapterId, title, raw_text) => {
+                  setEditingChapter({ bookId, chapterId, title, raw_text });
+                  setChapterEditError("");
+                }}
+              />
             )}
           </div>
         ))}
@@ -457,6 +571,43 @@ function BooksTab() {
           </form>
         </div>
 
+        {editingChapter && (
+          <div className="border-t border-gray-100 pt-6">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-700">编辑章节</h2>
+              <button onClick={() => setEditingChapter(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+            </div>
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={editingChapter.title}
+                onChange={(e) => setEditingChapter((c) => c ? { ...c, title: e.target.value } : null)}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                placeholder="章节标题"
+              />
+              <textarea
+                value={editingChapter.raw_text}
+                onChange={(e) => setEditingChapter((c) => c ? { ...c, raw_text: e.target.value } : null)}
+                rows={10}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y font-mono"
+                placeholder="章节正文"
+              />
+              {chapterEditError && <p className="text-xs text-red-500">{chapterEditError}</p>}
+              <button
+                onClick={() => editChapterMutation.mutate({
+                  bookId: editingChapter.bookId,
+                  chapterId: editingChapter.chapterId,
+                  body: { title: editingChapter.title, raw_text: editingChapter.raw_text || null },
+                })}
+                disabled={editChapterMutation.isPending}
+                className="w-full py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
+              >
+                {editChapterMutation.isPending ? "保存中..." : "保存章节"}
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="border-t border-gray-100 pt-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">添加章节</h2>
           <form onSubmit={handleChapterSubmit} className="space-y-3">
@@ -497,6 +648,18 @@ function BooksTab() {
           </form>
         </div>
       </div>
+      {translateChapterTarget && (
+        <TranslateConfirmModal
+          isOpen={true}
+          title={`Ch.${translateChapterTarget.chapter.chapter_order} ${translateChapterTarget.chapter.title}`}
+          wordCount={translateChapterTarget.chapter.word_count}
+          onConfirm={() => translateChapterMutation.mutate({
+            bookId: translateChapterTarget.bookId,
+            chapterId: translateChapterTarget.chapter.id,
+          })}
+          onCancel={() => setTranslateChapterTarget(null)}
+        />
+      )}
     </div>
   );
 }
