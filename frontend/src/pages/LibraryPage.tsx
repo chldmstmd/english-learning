@@ -123,32 +123,46 @@ function BookCard({
 }) {
   return (
     <div className="relative group">
-      <div className="block bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
-        {book.cover_image_url && (
-          <div className="h-36 overflow-hidden bg-gray-100">
-            <img
-              src={book.cover_image_url}
-              alt=""
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              loading="lazy"
-            />
+      {book.is_saved ? (
+        <Link
+          to={`/books/${book.id}`}
+          className="block bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow"
+        >
+          {book.cover_image_url && (
+            <div className="h-36 overflow-hidden bg-gray-100">
+              <img src={book.cover_image_url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+            </div>
+          )}
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="text-xs bg-amber-50 text-amber-600 border border-amber-100 px-1.5 py-0.5 rounded font-medium">书</span>
+              {book.source_category && (
+                <span className="text-xs text-gray-400">{CATEGORIES.find((c) => c.value === book.source_category)?.label ?? book.source_category}</span>
+              )}
+            </div>
+            <h3 className="font-medium text-sm leading-snug line-clamp-2 text-gray-800 group-hover:text-blue-600 transition-colors">{book.title}</h3>
+            <p className="text-xs text-gray-400 mt-2">{book.chapter_count} 章</p>
           </div>
-        )}
-        <div className="p-4">
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <span className="text-xs bg-amber-50 text-amber-600 border border-amber-100 px-1.5 py-0.5 rounded font-medium">书</span>
-            {book.source_category && (
-              <span className="text-xs text-gray-400">
-                {CATEGORIES.find((c) => c.value === book.source_category)?.label ?? book.source_category}
-              </span>
-            )}
+        </Link>
+      ) : (
+        <div className="block bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
+          {book.cover_image_url && (
+            <div className="h-36 overflow-hidden bg-gray-100">
+              <img src={book.cover_image_url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+            </div>
+          )}
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="text-xs bg-amber-50 text-amber-600 border border-amber-100 px-1.5 py-0.5 rounded font-medium">书</span>
+              {book.source_category && (
+                <span className="text-xs text-gray-400">{CATEGORIES.find((c) => c.value === book.source_category)?.label ?? book.source_category}</span>
+              )}
+            </div>
+            <h3 className="font-medium text-sm leading-snug line-clamp-2 text-gray-800 group-hover:text-blue-600 transition-colors">{book.title}</h3>
+            <p className="text-xs text-gray-400 mt-2">{book.chapter_count} 章</p>
           </div>
-          <h3 className="font-medium text-sm leading-snug line-clamp-2 text-gray-800 group-hover:text-blue-600 transition-colors">
-            {book.title}
-          </h3>
-          <p className="text-xs text-gray-400 mt-2">{book.chapter_count} 章</p>
         </div>
-      </div>
+      )}
       <button
         onClick={() => onSave(book.id, !book.is_saved)}
         className={`absolute top-2 right-2 p-1.5 rounded-full transition-all ${
