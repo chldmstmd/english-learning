@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, nulls_last
 from sqlalchemy import func as sql_func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -152,9 +153,10 @@ async def save_library_book(
             UserBookShelf.book_id == book_id,
         )
     )
-    if not existing:
-        db.add(UserBookShelf(user_id=current_user.id, book_id=book_id))
-        await db.commit()
+    if existing:
+        return JSONResponse(status_code=200, content={"saved": True})
+    db.add(UserBookShelf(user_id=current_user.id, book_id=book_id))
+    await db.commit()
     return {"saved": True}
 
 
