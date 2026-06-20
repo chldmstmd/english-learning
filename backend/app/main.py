@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import settings
+from app.config import settings as app_settings
 from app.database import engine, Base, AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    if settings.admin_email:
+    if app_settings.admin_email:
         from sqlalchemy import select, update
         from app.models.user import User as UserModel
         async with AsyncSessionLocal() as session:
@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
                     update(UserModel).where(UserModel.id == user.id).values(role="super_admin")
                 )
                 await session.commit()
-                logger.info("Promoted %s to super_admin", settings.admin_email)
+                logger.info("Promoted %s to super_admin", app_settings.admin_email)
 
     sync_task = asyncio.create_task(_periodic_voa_sync())
     yield
