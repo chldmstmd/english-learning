@@ -54,7 +54,6 @@ async def create_article(
             )
 
     await db.commit()
-    asyncio.create_task(batch_translation_service.translate_article(article.id))
     return ArticleListItem.model_validate(article)
 
 
@@ -81,7 +80,7 @@ async def edit_article(
     article.tokens = tokens
     article.sentences = sentences
     article.word_count = word_count
-    article.translation_status = "pending"
+    article.translation_status = "stale"
 
     # If sentence count changed, the saved resume anchor is no longer valid -> reset to chapter start
     if len(sentences) != old_sentence_count:
@@ -92,7 +91,6 @@ async def edit_article(
         )
 
     await db.commit()
-    asyncio.create_task(batch_translation_service.translate_article(article.id))
     return ArticleListItem.model_validate(article)
 
 
@@ -262,9 +260,32 @@ async def delete_article(
     current_user: User = Depends(get_current_user),
 ):
     article = await db.scalar(
-        select(Article).where(Article.id == article_id, Article.user_id == current_user.id)
+        select(Article).where(
+            Article.id == article_id,
+            Article.user_id == current_user.id,
+            Article.is_library == False,  # noqa: E712
+        )
     )
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
     await db.delete(article)
     await db.commit()
+
+
+@router.post("/articles/{article_id}/translate", status_code=200)
+async def translate_article(
+    article_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    article = await db.scalar(
+        select(Article).where(Article.id == article_id, Article.user_id == current_user.id)
+    )
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    if article.translation_status == "processing":
+        return {"translation_status": "processing"}
+    article.translation_status = "processing"
+    await db.commit()
+    asyncio.create_task(batch_translation_service.translate_article(article_id))
+    return {"translation_status": "processing"}
