@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -10,20 +9,6 @@ from app.database import engine, Base, AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
-_VOA_SYNC_INTERVAL_SECONDS = 6 * 3600
-
-
-async def _periodic_voa_sync():
-    await asyncio.sleep(15)
-    while True:
-        logger.info("Starting periodic VOA sync...")
-        try:
-            from app.services import voa_service
-            await voa_service.sync_all_feeds()
-        except Exception as exc:
-            logger.error("Periodic VOA sync error: %s", exc)
-        await asyncio.sleep(_VOA_SYNC_INTERVAL_SECONDS)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,7 +16,6 @@ async def lifespan(app: FastAPI):
     import app.models.article        # noqa: F401
     import app.models.vocabulary     # noqa: F401
     import app.models.annotation     # noqa: F401
-    import app.models.sync_log       # noqa: F401
     import app.models.bookmark       # noqa: F401
     import app.models.reading_history  # noqa: F401
     import app.models.article_translation  # noqa: F401
@@ -55,13 +39,7 @@ async def lifespan(app: FastAPI):
                 await session.commit()
                 logger.info("Promoted %s to super_admin", app_settings.admin_email)
 
-    sync_task = asyncio.create_task(_periodic_voa_sync())
     yield
-    sync_task.cancel()
-    try:
-        await sync_task
-    except asyncio.CancelledError:
-        pass
 
 
 app = FastAPI(title="Context-Aware Smart Reader", lifespan=lifespan)
@@ -83,7 +61,7 @@ app.include_router(translate.router, prefix="/api/v1")
 app.include_router(settings.router, prefix="/api/v1")
 app.include_router(library.router, prefix="/api/v1")
 app.include_router(books.router, prefix="/api/v1")
-app.include_router(admin.router)
+app.include_router(admin.router, prefix="/api/v1")
 
 
 @app.get("/health")

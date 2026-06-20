@@ -226,7 +226,7 @@ export default function LibraryPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">内容库</h1>
-            <p className="text-sm text-gray-400 mt-0.5">VOA Learning English 精选内容</p>
+            <p className="text-sm text-gray-400 mt-0.5">精选英语学习内容</p>
           </div>
         </div>
 
@@ -286,7 +286,7 @@ export default function LibraryPage() {
               <div className="text-center text-gray-400 py-20">
                 <p className="text-4xl mb-3">📚</p>
                 <p className="font-medium">暂无文章</p>
-                <p className="text-sm mt-1">内容库尚未同步，请在后台触发 VOA 同步</p>
+                <p className="text-sm mt-1">内容库暂无文章，请联系管理员添加</p>
               </div>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

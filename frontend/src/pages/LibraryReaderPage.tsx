@@ -143,35 +143,33 @@ export default function LibraryReaderPage() {
           </div>
         </div>
 
-        {/* VOA source attribution banner */}
-        <div className="max-w-2xl mx-auto px-8 pt-6">
-          <div className="flex items-center gap-3 py-2.5 px-4 bg-gray-50 rounded-lg border border-gray-100 text-xs text-gray-500">
-            <span className="font-medium text-gray-600">来源：VOA Learning English</span>
-            {article.difficulty && (
-              <>
-                <span>·</span>
+        {/* Article metadata banner */}
+        {(article.difficulty || article.published_at || article.source_url) && (
+          <div className="max-w-2xl mx-auto px-8 pt-6">
+            <div className="flex items-center gap-3 py-2.5 px-4 bg-gray-50 rounded-lg border border-gray-100 text-xs text-gray-500">
+              {article.difficulty && (
                 <span>{DIFFICULTY_LABELS[article.difficulty]}</span>
-              </>
-            )}
-            {article.published_at && (
-              <>
-                <span>·</span>
-                <span>{new Date(article.published_at).toLocaleDateString("zh-CN")}</span>
-              </>
-            )}
-            {article.source_url && (
-              <a
-                href={article.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ml-auto flex items-center gap-1 text-blue-500 hover:text-blue-700 transition-colors"
-              >
-                原文
-                <ExternalLink size={11} />
-              </a>
-            )}
+              )}
+              {article.published_at && (
+                <>
+                  {article.difficulty && <span>·</span>}
+                  <span>{new Date(article.published_at).toLocaleDateString("zh-CN")}</span>
+                </>
+              )}
+              {article.source_url && (
+                <a
+                  href={article.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-auto flex items-center gap-1 text-blue-500 hover:text-blue-700 transition-colors"
+                >
+                  原文
+                  <ExternalLink size={11} />
+                </a>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Article content */}
         <div className="max-w-2xl mx-auto px-8 py-6">
