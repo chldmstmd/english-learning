@@ -64,6 +64,7 @@ export interface BookListItem {
   created_at: string;
   chapter_count: number;
   read_chapter_order: number | null;
+  is_from_library: boolean;
 }
 
 export interface ChapterListItem {
@@ -83,6 +84,16 @@ export interface BookDetail {
   chapters: ChapterListItem[];
   continue_article_id: string | null;
   continue_sentence_index: number | null;
+}
+
+export interface LibraryBookListItem {
+  id: string;
+  title: string;
+  cover_image_url: string | null;
+  source_category: string | null;
+  created_at: string;
+  chapter_count: number;
+  is_saved: boolean;
 }
 
 export type Difficulty = "level1" | "level2";
