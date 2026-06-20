@@ -134,10 +134,14 @@ async def list_articles(
     current_user: User = Depends(get_current_user),
 ):
     """Returns user's own articles + bookmarked library articles, newest first."""
-    # User's own uploads
+    # User's own standalone uploads (book chapters are excluded; they live inside their book)
     own = list(await db.scalars(
         select(Article)
-        .where(Article.user_id == current_user.id, Article.is_library == False)  # noqa: E712
+        .where(
+            Article.user_id == current_user.id,
+            Article.is_library == False,  # noqa: E712
+            Article.book_id == None,  # noqa: E711
+        )
         .order_by(Article.created_at.desc())
     ))
 
