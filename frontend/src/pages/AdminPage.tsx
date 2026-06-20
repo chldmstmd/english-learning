@@ -324,8 +324,9 @@ function BooksTab() {
   const addChapterMutation = useMutation({
     mutationFn: ({ bookId, body }: { bookId: string; body: object }) =>
       api.post(`admin/library/books/${bookId}/chapters`, { json: body }).json(),
-    onSuccess: () => {
+    onSuccess: (_, { bookId }) => {
       queryClient.invalidateQueries({ queryKey: ["library-books"] });
+      queryClient.invalidateQueries({ queryKey: ["library-book-detail", bookId] });
       setChapterForm(EMPTY_CHAPTER_FORM);
       setChapterFormError("");
     },

@@ -159,6 +159,13 @@ async def delete_library_book(
     if not book:
         raise HTTPException(status_code=404, detail="Library book not found")
 
+    chapter_ids = list(await db.scalars(
+        select(Article.id).where(Article.book_id == book_id)
+    ))
+    if chapter_ids:
+        await db.execute(sa_delete(ArticleAnnotation).where(ArticleAnnotation.article_id.in_(chapter_ids)))
+        await db.execute(sa_delete(UserReadingHistory).where(UserReadingHistory.article_id.in_(chapter_ids)))
+        await db.execute(sa_delete(UserLibraryBookmark).where(UserLibraryBookmark.article_id.in_(chapter_ids)))
     await db.execute(sa_delete(Article).where(Article.book_id == book_id))
     await db.delete(book)
     await db.commit()
