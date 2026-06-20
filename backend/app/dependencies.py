@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.user import User
+from app.roles import UserRole, has_role
 from app.services import auth_service
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -24,3 +25,15 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     return user
+
+
+def require_role(required: UserRole):
+    async def _check(current_user: User = Depends(get_current_user)) -> User:
+        if not has_role(current_user.role, required):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        return current_user
+    return _check
+
+
+require_content_admin = require_role(UserRole.content_admin)
+require_super_admin = require_role(UserRole.super_admin)
