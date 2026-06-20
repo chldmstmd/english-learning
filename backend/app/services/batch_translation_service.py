@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, delete as sa_delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.database import AsyncSessionLocal
@@ -48,13 +48,9 @@ async def translate_article(article_id: str) -> None:
                 await _set_status(db, article_id, "done")
                 return
 
-            # Check idempotency
-            existing_count = await db.scalar(
-                select(func.count()).where(ArticleTranslation.article_id == article_id)
-            )
-            if existing_count and existing_count >= len(word_entries):
-                await _set_status(db, article_id, "done")
-                return
+            # Delete stale translations before re-translating
+            await db.execute(sa_delete(ArticleTranslation).where(ArticleTranslation.article_id == article_id))
+            await db.commit()
 
             # Call AI with sentence-grouped context
             ai_entries = [(si, wi, text) for si, wi, text, _ in word_entries]
@@ -78,8 +74,9 @@ async def translate_article(article_id: str) -> None:
 
             if values:
                 stmt = pg_insert(ArticleTranslation).values(values)
-                stmt = stmt.on_conflict_do_nothing(
-                    constraint="uq_article_word_position"
+                stmt = stmt.on_conflict_do_update(
+                    constraint="uq_article_word_position",
+                    set_={"translation": pg_insert(ArticleTranslation).excluded.translation},
                 )
                 await db.execute(stmt)
                 await db.commit()
