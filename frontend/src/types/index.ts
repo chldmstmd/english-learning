@@ -87,6 +87,7 @@ export interface BookDetail {
   chapters: ChapterListItem[];
   continue_article_id: string | null;
   continue_sentence_index: number | null;
+  is_owner: boolean;
 }
 
 export interface LibraryBookListItem {

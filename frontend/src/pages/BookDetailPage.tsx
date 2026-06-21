@@ -54,15 +54,17 @@ export default function BookDetailPage() {
 
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-gray-800">章节目录</h2>
-          <button
-            onClick={() => setAdding(!adding)}
-            className="text-sm text-blue-500 hover:text-blue-600 font-medium"
-          >
-            + 添加章节
-          </button>
+          {book.is_owner && (
+            <button
+              onClick={() => setAdding(!adding)}
+              className="text-sm text-blue-500 hover:text-blue-600 font-medium"
+            >
+              + 添加章节
+            </button>
+          )}
         </div>
 
-        {adding && (
+        {book.is_owner && adding && (
           <div className="bg-gray-50 rounded-xl border border-gray-200 p-5 mb-5">
             <input
               type="text" value={title} onChange={(e) => setTitle(e.target.value)}
