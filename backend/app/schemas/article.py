@@ -64,7 +64,7 @@ class ArticleDetailResponse(BaseModel):
     tokens: list[dict[str, Any]]
     sentences: list[dict[str, Any]]
     word_count: int
-    annotations: dict[str, AnnotationSchema]  # lemma → annotation
+    annotations: dict[str, AnnotationSchema]  # "{sentence_index}-{word_index}" → annotation
     word_statuses: dict[str, str]             # lemma → status
     # Library metadata (null for user-uploaded articles)
     is_library: bool = False

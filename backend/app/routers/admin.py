@@ -18,7 +18,7 @@ from app.schemas.article import (
     LibraryArticleListItem,
 )
 from app.schemas.book import BookCreateRequest, ChapterCreateRequest, ChapterPatchRequest, LibraryBookListItem
-from app.services import batch_translation_service, nlp_service
+from app.services import annotation_service, batch_translation_service, nlp_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -74,6 +74,9 @@ async def update_library_article(
         article.word_count = word_count
         article.translation_status = "stale"
         await db.execute(sa_delete(ArticleTranslation).where(ArticleTranslation.article_id == article_id))
+        # Library articles are shared across users; re-tokenizing shifts token
+        # positions, so mark every user's position annotations stale on mismatch.
+        await annotation_service.revalidate_article_annotations(db, article_id, tokens)
     if body.difficulty is not None:
         article.difficulty = body.difficulty
     if body.source_category is not None:
@@ -227,6 +230,9 @@ async def update_library_chapter(
         article.word_count = word_count
         article.translation_status = "stale"
         await db.execute(sa_delete(ArticleTranslation).where(ArticleTranslation.article_id == chapter_id))
+        # Library chapters are shared across users; re-tokenizing shifts token
+        # positions, so mark every user's position annotations stale on mismatch.
+        await annotation_service.revalidate_article_annotations(db, chapter_id, tokens)
     await db.commit()
     return ArticleListItem.model_validate(article)
 

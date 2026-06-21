@@ -71,3 +71,46 @@ def test_revalidate_marks_moved_word_stale_and_keeps_matching():
                 await db.commit()
 
     _run(scenario)
+
+
+def test_revalidate_sweeps_all_users_for_shared_article():
+    """A library article is shared; an admin edit must stale-mark EVERY user's
+    annotations at moved positions, not just one user's."""
+    uid_a = str(uuid4())
+    uid_b = str(uuid4())
+    aid = str(uuid4())
+
+    async def scenario(session_factory):
+        try:
+            async with session_factory() as db:
+                db.add(Article(
+                    id=aid, user_id=uid_a, title="t", raw_text="x",
+                    tokens=[], sentences=[], word_count=0, is_library=True,
+                ))
+                await db.commit()
+            # both users clicked the same position (0,1) = "bank"
+            async with session_factory() as db:
+                await annotation_service.upsert_annotation(
+                    db, aid, uid_a, "bank", sentence_index=0, word_index=1, translation="银行")
+                await annotation_service.upsert_annotation(
+                    db, aid, uid_b, "bank", sentence_index=0, word_index=1, translation="银行")
+                await db.commit()
+
+            # admin re-tokenizes: (0,1) is now "river"
+            new_tokens = [{"sentence_index": 0, "index": 1, "lemma": "river", "is_alpha": True}]
+            async with session_factory() as db:
+                await annotation_service.revalidate_article_annotations(db, aid, new_tokens)
+                await db.commit()
+
+            async with session_factory() as db:
+                staleness = {a.user_id: a.is_stale for a in
+                             await db.scalars(select(ArticleAnnotation).where(ArticleAnnotation.article_id == aid))}
+            assert staleness[uid_a] is True   # both users' annotations marked stale
+            assert staleness[uid_b] is True
+        finally:
+            async with session_factory() as db:
+                await db.execute(delete(ArticleAnnotation).where(ArticleAnnotation.article_id == aid))
+                await db.execute(delete(Article).where(Article.id == aid))
+                await db.commit()
+
+    _run(scenario)
