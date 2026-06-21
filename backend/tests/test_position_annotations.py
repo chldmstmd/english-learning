@@ -114,3 +114,27 @@ def test_get_annotations_skips_stale():
             await _cleanup_anns(session_factory, uid)
 
     _run(scenario)
+
+
+def test_translate_endpoint_writes_position_annotation():
+    """translate router upserts annotation keyed by the clicked position."""
+    uid = str(uuid4())   # user_id is VARCHAR(36) — do NOT prefix (overflows)
+    aid = str(uuid4())
+
+    async def scenario(session_factory):
+        try:
+            # seed an article the user owns (article_id has an enforced FK to articles.id)
+            await _seed_article(session_factory, aid, uid)
+            async with session_factory() as db:
+                await annotation_service.upsert_annotation(
+                    db, aid, uid, "bank", sentence_index=0, word_index=1,
+                    translation="银行", source_sentence="the bank",
+                )
+                await db.commit()
+            async with session_factory() as db:
+                anns = await annotation_service.get_article_annotations(db, aid, uid)
+            assert anns["0-1"]["translation"] == "银行"
+        finally:
+            await _cleanup_anns(session_factory, uid)
+
+    _run(scenario)
