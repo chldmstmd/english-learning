@@ -20,7 +20,7 @@ from app.schemas.book import (
     ChapterCreateRequest,
     ChapterListItem,
 )
-from app.services import nlp_service, vocab_service, annotation_service, batch_translation_service
+from app.services import nlp_service, batch_translation_service
 
 router = APIRouter(tags=["books"])
 
@@ -138,14 +138,6 @@ async def add_chapter(
     )
     db.add(article)
     await db.flush()
-
-    word_statuses = await vocab_service.get_all_word_statuses(db, current_user.id)
-    article_lemmas = {t["lemma"] for t in tokens if t["is_alpha"]}
-    for word in word_statuses:
-        if word in article_lemmas:
-            await annotation_service.upsert_annotation(
-                db, article.id, current_user.id, word, gen_status="pending"
-            )
 
     await db.commit()
     asyncio.create_task(batch_translation_service.translate_article(article.id))
