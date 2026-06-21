@@ -208,6 +208,7 @@ async def get_book(
         chapters=chapter_items,
         continue_article_id=continue_article_id,
         continue_sentence_index=continue_sentence_index,
+        is_owner=(book.user_id == current_user.id),
     )
 
 

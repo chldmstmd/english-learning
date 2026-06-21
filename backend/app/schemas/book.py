@@ -48,6 +48,7 @@ class BookDetailResponse(BaseModel):
     chapters: list[ChapterListItem]
     continue_article_id: str | None = None
     continue_sentence_index: int | None = None
+    is_owner: bool = False
 
 
 class LibraryBookListItem(BaseModel):
