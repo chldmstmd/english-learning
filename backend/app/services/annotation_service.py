@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.annotation import ArticleAnnotation
@@ -136,11 +136,9 @@ async def delete_word_annotations(
     Used when a word is removed from vocabulary ("uncollect") so no stale
     translation lingers in the reader. Caller commits.
     """
-    rows = list(await db.scalars(
-        select(ArticleAnnotation).where(
+    await db.execute(
+        delete(ArticleAnnotation).where(
             ArticleAnnotation.user_id == user_id,
             ArticleAnnotation.word == word,
         )
-    ))
-    for ann in rows:
-        await db.delete(ann)
+    )
