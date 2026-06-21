@@ -117,7 +117,10 @@ await db.commit()
 
 ## 数据流与一致性
 
-- **未收录后回到文章**：`ArticleReaderPage` 的 `useQuery(["article", id])` 默认 `staleTime: 0`，挂载即后台刷新；新数据使 `article` 引用变化 → `initFromArticle` 重新 seed store，被删的标注不再返回。`wordStatuses` 用合并，本地遗留的 `unseen` 条目无害（`getStatus` 本就回落 unseen）。前端无法按 lemma 清理内存标注（标注按位置存、不带 lemma），依赖后端删除 + 刷新，已足够。
+- **未收录后回到文章（双层保障）**：
+  - 第一层（即时显示）：未收录把状态置为 `unseen`，`WordToken` 的 `showTranslation = !!annotation?.translation && status === "new"` 立即判否 —— 即便内存里还残留该位置标注，译文也不会显示，且点击走 `status==="unseen"` 分支可重新翻译。这是显示正确性的根本保障，不依赖任何刷新。
+  - 第二层（数据清理）：后端删除该 lemma 的所有 `ArticleAnnotation`；前端在未收录的 `onSuccess` 里 **主动失效** `["article"]` / `["library-article"]` 查询，迫使文章重新拉取，`initFromArticle` 重新 seed store 时被删标注不再返回。
+  - 注意：全局 `staleTime: 30_000`（见 `main.tsx`），若不主动失效，30s 内回到文章不会自动刷新 —— 因此第二层显式 invalidate 是必需的，不能依赖“挂载即刷新”。`wordStatuses` 用合并，本地遗留的 `unseen` 条目无害（`getStatus` 本就回落 unseen）。前端无法按 lemma 清理内存标注（标注按位置存、不带 lemma），故依赖后端删除 + 主动失效刷新。
 - **隐藏/显示译文**：`statusMutation` 成功后 `setWordStatus(lemma, ...)` 立即更新 store，`WordToken` 经 `getStatus` 重渲染，头顶译文随 `showTranslation` 公式立即显隐，无需刷新文章。
 
 ## 明确的取舍（YAGNI）

@@ -47,6 +47,12 @@ export default function VocabListPage() {
     },
     onSuccess: (_, { word, status }) => {
       queryClient.invalidateQueries({ queryKey: ["vocab"] });
+      if (status === "unseen") {
+        // uncollect deletes this lemma's position annotations server-side;
+        // refetch articles so the reader drops the stale head-of-word translation.
+        queryClient.invalidateQueries({ queryKey: ["article"] });
+        queryClient.invalidateQueries({ queryKey: ["library-article"] });
+      }
       setWordStatus(word, status === "unseen" ? "unseen" : status);
     },
   });
