@@ -307,17 +307,17 @@ function BookChapterList({
   onTranslateChapter: (bookId: string, chapter: ChapterItem) => void;
   onEditChapter: (bookId: string, chapterId: string, title: string, rawText: string) => void;
 }) {
-  const { data: bookDetail, isLoading } = useQuery({
+  const { data: chapters, isLoading } = useQuery({
     queryKey: ["library-book-detail", bookId],
-    queryFn: () => api.get(`library/books/${bookId}`).json<{ chapters: ChapterItem[] }>(),
+    queryFn: () => api.get(`admin/library/books/${bookId}/chapters`).json<ChapterItem[]>(),
   });
 
   if (isLoading) return <p className="text-xs text-gray-400 px-8 pb-2">加载章节...</p>;
-  if (!bookDetail?.chapters?.length) return <p className="text-xs text-gray-400 px-8 pb-2">暂无章节</p>;
+  if (!chapters?.length) return <p className="text-xs text-gray-400 px-8 pb-2">暂无章节</p>;
 
   return (
     <div className="bg-gray-50 px-8 pb-2">
-      {bookDetail.chapters.map((ch) => (
+      {chapters.map((ch) => (
         <div key={ch.id} className="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
           <div>
             <span className="text-xs text-gray-500 mr-2">Ch.{ch.chapter_order}</span>

@@ -88,6 +88,7 @@ export interface BookDetail {
   continue_article_id: string | null;
   continue_sentence_index: number | null;
   is_owner: boolean;
+  is_library: boolean;
 }
 
 export interface LibraryBookListItem {

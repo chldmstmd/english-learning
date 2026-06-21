@@ -17,7 +17,7 @@ from app.schemas.article import (
     ArticleListItem,
     LibraryArticleListItem,
 )
-from app.schemas.book import BookCreateRequest, BookPatchRequest, ChapterCreateRequest, ChapterPatchRequest, LibraryBookListItem
+from app.schemas.book import AdminChapterListItem, BookCreateRequest, BookPatchRequest, ChapterCreateRequest, ChapterPatchRequest, LibraryBookListItem
 from app.services import annotation_service, batch_translation_service, nlp_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -227,12 +227,33 @@ async def add_library_chapter(
         tokens=tokens,
         sentences=sentences,
         word_count=word_count,
+        is_library=True,
         book_id=book_id,
         chapter_order=next_order,
     )
     db.add(article)
     await db.commit()
     return ArticleListItem.model_validate(article)
+
+
+@router.get("/library/books/{book_id}/chapters", response_model=list[AdminChapterListItem])
+async def list_library_chapters(
+    book_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_content_admin),
+):
+    book = await db.scalar(
+        select(Book).where(Book.id == book_id, Book.is_library == True)  # noqa: E712
+    )
+    if not book:
+        raise HTTPException(status_code=404, detail="Library book not found")
+
+    chapters = list(await db.scalars(
+        select(Article)
+        .where(Article.book_id == book_id)
+        .order_by(Article.chapter_order)
+    ))
+    return [AdminChapterListItem.model_validate(c) for c in chapters]
 
 
 @router.patch("/library/books/{book_id}/chapters/{chapter_id}", response_model=ArticleListItem)

@@ -63,3 +63,18 @@ def test_book_detail_response_has_is_owner_default():
         chapters=[],
     )
     assert resp.is_owner is False
+
+
+def test_book_detail_response_has_is_library_default():
+    from app.schemas.book import BookDetailResponse
+    from datetime import datetime, timezone
+
+    resp = BookDetailResponse(
+        id="abc",
+        title="Test",
+        cover_image_url=None,
+        source_category=None,
+        created_at=datetime.now(timezone.utc),
+        chapters=[],
+    )
+    assert resp.is_library is False

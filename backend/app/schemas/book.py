@@ -39,6 +39,18 @@ class ChapterListItem(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AdminChapterListItem(BaseModel):
+    """Admin chapter listing — includes raw_text so the admin UI can edit in place."""
+    id: str
+    title: str
+    chapter_order: int
+    word_count: int
+    translation_status: Literal["untranslated", "processing", "done", "stale", "failed"] = "untranslated"
+    raw_text: str = ""
+
+    model_config = {"from_attributes": True}
+
+
 class BookDetailResponse(BaseModel):
     id: str
     title: str
@@ -49,6 +61,7 @@ class BookDetailResponse(BaseModel):
     continue_article_id: str | None = None
     continue_sentence_index: int | None = None
     is_owner: bool = False
+    is_library: bool = False
 
 
 class LibraryBookListItem(BaseModel):

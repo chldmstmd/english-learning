@@ -34,6 +34,11 @@ export default function BookDetailPage() {
     return <div className="flex items-center justify-center h-screen text-gray-400">加载中...</div>;
   }
 
+  // Library-book chapters are public content read via the library route; own
+  // books use the private article route (owner-only on the backend).
+  const chapterPath = (chapterId: string) =>
+    book.is_library ? `/library/${chapterId}` : `/articles/${chapterId}`;
+
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-3xl mx-auto px-6 py-8">
@@ -45,7 +50,7 @@ export default function BookDetailPage() {
 
         {book.continue_article_id && (
           <button
-            onClick={() => navigate(`/articles/${book.continue_article_id}`)}
+            onClick={() => navigate(chapterPath(book.continue_article_id!))}
             className="bg-blue-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors mb-6"
           >
             继续阅读
@@ -54,7 +59,7 @@ export default function BookDetailPage() {
 
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-gray-800">章节目录</h2>
-          {book.is_owner && (
+          {book.is_owner && !book.is_library && (
             <button
               onClick={() => setAdding(!adding)}
               className="text-sm text-blue-500 hover:text-blue-600 font-medium"
@@ -64,7 +69,7 @@ export default function BookDetailPage() {
           )}
         </div>
 
-        {book.is_owner && adding && (
+        {book.is_owner && !book.is_library && adding && (
           <div className="bg-gray-50 rounded-xl border border-gray-200 p-5 mb-5">
             <input
               type="text" value={title} onChange={(e) => setTitle(e.target.value)}
@@ -94,7 +99,7 @@ export default function BookDetailPage() {
         <div className="space-y-2">
           {book.chapters.map((ch) => (
             <Link
-              key={ch.id} to={`/articles/${ch.id}`}
+              key={ch.id} to={chapterPath(ch.id)}
               className="flex items-center justify-between bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow"
             >
               <div className="min-w-0">

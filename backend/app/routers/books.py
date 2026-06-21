@@ -115,6 +115,11 @@ async def add_chapter(
     )
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
+    # Public-library books are admin-owned content; chapters must be added via
+    # the admin endpoint so they are correctly flagged is_library. Block the
+    # user path even though the owner check passes (admins own library books).
+    if book.is_library:
+        raise HTTPException(status_code=403, detail="Use the admin endpoint to add chapters to a library book")
 
     tokens, sentences, word_count = nlp_service.tokenize(body.raw_text)
     if word_count > 10000:
@@ -209,6 +214,7 @@ async def get_book(
         continue_article_id=continue_article_id,
         continue_sentence_index=continue_sentence_index,
         is_owner=(book.user_id == current_user.id),
+        is_library=book.is_library,
     )
 
 
