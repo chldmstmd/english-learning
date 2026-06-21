@@ -65,20 +65,22 @@ export const WordToken: React.FC<Props> = ({ token, articleId, sentences, autoOp
     },
   });
 
-  const showTranslation = !!annotation?.translation;
+  // 译文头顶显示 = 该位置有标注 且 词处于「新词」。巩固中/已习得隐藏译文（自测）。
+  const showTranslation = !!annotation?.translation && status === "new";
   // highlight = word is in vocab and not yet mastered
   const highlighted = status === "new" || status === "reviewing";
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (showTranslation) {
-      // already translated here -> manage the word
-      openSidebar(token.text, token.lemma, articleId, getSentenceText());
-    } else {
+    if (status === "unseen") {
+      // 首次：翻译并收录为「新词」
       translateMutation.mutate();
       if (autoOpenSidebar) {
         openSidebar(token.text, token.lemma, articleId, getSentenceText());
       }
+    } else {
+      // 已收录（new/reviewing/mastered）：打开侧边栏管理 / 自测
+      openSidebar(token.text, token.lemma, articleId, getSentenceText());
     }
   };
 
