@@ -5,7 +5,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.vocab import VocabDetailResponse, VocabItem, VocabStatusUpdate
-from app.services import dict_service, vocab_service
+from app.services import dict_service, vocab_service, annotation_service
 
 router = APIRouter(tags=["vocab"])
 
@@ -67,6 +67,19 @@ async def get_vocab_detail(
     except Exception:
         dict_data = {"phonetic": None, "definitions": []}
 
+    locations = await annotation_service.get_word_click_locations(
+        db, current_user.id, word, limit=3
+    )
+
+    # Lazily backfill the dictionary Chinese meaning if missing (free translation, not AI).
+    if not vocab.context_translation:
+        from app.services import free_translation_service
+        try:
+            vocab.context_translation = await free_translation_service.translate(word)
+            await db.commit()
+        except Exception:
+            pass
+
     return VocabDetailResponse(
         word=vocab.word,
         phonetic=dict_data["phonetic"],
@@ -74,4 +87,5 @@ async def get_vocab_detail(
         context_translation=vocab.context_translation,
         source_sentence=vocab.source_sentence,
         definitions=dict_data["definitions"],
+        locations=locations,
     )

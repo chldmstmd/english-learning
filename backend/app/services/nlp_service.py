@@ -46,14 +46,3 @@ def tokenize(raw_text: str) -> tuple[list[dict], list[dict], int]:
                 word_count += 1
 
     return tokens, sentences, word_count
-
-
-def find_sentence_for_lemma(lemma: str, tokens: list[dict], sentences: list[dict]) -> str:
-    """Return the text of the first sentence containing this lemma."""
-    for token in tokens:
-        if token.get("lemma") == lemma and token.get("is_alpha"):
-            sent_idx = token["sentence_index"]
-            for sent in sentences:
-                if sent["index"] == sent_idx:
-                    return sent["text"]
-    return ""

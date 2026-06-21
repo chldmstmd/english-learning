@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,7 +30,6 @@ async def _get_translation_with_fallback(word: str, sentence: str) -> tuple[str,
 @router.post("/translate-word", response_model=TranslateResponse)
 async def translate_word(
     body: TranslateRequest,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -47,32 +46,34 @@ async def translate_word(
         db, current_user.id, body.lemma, source_sentence=body.sentence
     )
 
-    # Check batch translation cache
-    cached_translation = None
-    if body.sentence_index is not None and body.word_index is not None:
-        cached = await db.scalar(
-            select(ArticleTranslation).where(
-                ArticleTranslation.article_id == body.article_id,
-                ArticleTranslation.sentence_index == body.sentence_index,
-                ArticleTranslation.word_index == body.word_index,
-            )
-        )
-        if cached and cached.translation:
-            cached_translation = cached.translation
+    # Dictionary-level Chinese meaning for the vocab list (word-level, context-free,
+    # via free translation — not AI tokens). Best-effort, only when missing.
+    if not vocab.context_translation:
+        try:
+            vocab.context_translation = await free_translation_service.translate(body.lemma)
+        except Exception:
+            pass  # leave null; vocab detail can fill it later
 
-    if cached_translation:
-        translation, is_fallback = cached_translation, False
+    # Check batch translation cache (per position)
+    cached = await db.scalar(
+        select(ArticleTranslation).where(
+            ArticleTranslation.article_id == body.article_id,
+            ArticleTranslation.sentence_index == body.sentence_index,
+            ArticleTranslation.word_index == body.word_index,
+        )
+    )
+    if cached and cached.translation:
+        translation, is_fallback = cached.translation, False
     else:
         translation, is_fallback = await _get_translation_with_fallback(body.lemma, body.sentence)
-
-    if not vocab.context_translation:
-        vocab.context_translation = translation
 
     await annotation_service.upsert_annotation(
         db,
         body.article_id,
         current_user.id,
         body.lemma,
+        sentence_index=body.sentence_index,
+        word_index=body.word_index,
         translation=translation,
         source_sentence=body.sentence,
         is_fallback=is_fallback,
@@ -80,13 +81,6 @@ async def translate_word(
     )
 
     await db.commit()
-
-    background_tasks.add_task(
-        annotation_service.sync_word_to_user_articles_task,
-        body.article_id,
-        current_user.id,
-        body.lemma,
-    )
 
     return TranslateResponse(
         word=body.word,

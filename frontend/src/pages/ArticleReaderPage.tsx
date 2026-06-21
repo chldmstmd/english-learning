@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { useParams, useSearchParams, Link } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { api } from "../api/client";
@@ -7,11 +7,13 @@ import { useVocabStore } from "../store/vocabStore";
 import { useSidebarStore } from "../store/sidebarStore";
 import { ArticleBody } from "../components/ArticleBody";
 import { WordSidebar } from "../components/WordSidebar";
-import type { ArticleDetail, Annotation, AppSettings } from "../types";
+import type { ArticleDetail, AppSettings } from "../types";
 
 export default function ArticleReaderPage() {
   const { id } = useParams<{ id: string }>();
-  const { initFromArticle, mergeAnnotations, articleAnnotations } = useVocabStore();
+  const [searchParams] = useSearchParams();
+  const targetSentence = searchParams.get("sentence");
+  const { initFromArticle } = useVocabStore();
   const { close: closeSidebar } = useSidebarStore();
 
   // Close sidebar when leaving the page
@@ -36,16 +38,18 @@ export default function ArticleReaderPage() {
     }
   }, [article]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Restore scroll to last read sentence on load
+  // Scroll to ?sentence= target (from vocab location link) or last-read sentence
   useEffect(() => {
-    if (article && article.last_sentence_index && article.last_sentence_index > 0) {
+    if (!article) return;
+    const idx = targetSentence != null ? Number(targetSentence) : article.last_sentence_index;
+    if (idx && idx > 0) {
       const t = setTimeout(() => {
-        const el = document.querySelector(`[data-sentence-index="${article.last_sentence_index}"]`);
-        el?.scrollIntoView({ behavior: "auto", block: "center" });
+        document.querySelector(`[data-sentence-index="${idx}"]`)
+          ?.scrollIntoView({ behavior: "auto", block: "center" });
       }, 100);
       return () => clearTimeout(t);
     }
-  }, [article]);
+  }, [article, targetSentence]);
 
   const progressMutation = useMutation({
     mutationFn: (body: { last_sentence_index: number }) =>
@@ -68,26 +72,6 @@ export default function ArticleReaderPage() {
       if (id) progressMutation.mutate({ last_sentence_index: current });
     }, 600);
   };
-
-  // Poll for pending annotations (every 2s until all done)
-  const hasPending = useMemo(() => {
-    if (!id || !articleAnnotations[id]) return false;
-    return Object.values(articleAnnotations[id]).some((a) => a.gen_status === "pending");
-  }, [id, articleAnnotations]);
-
-  useQuery({
-    queryKey: ["annotations-poll", id],
-    queryFn: async () => {
-      const anns = await api
-        .get(`articles/${id}/annotations`)
-        .json<Record<string, Annotation>>();
-      if (id) mergeAnnotations(id, anns);
-      return anns;
-    },
-    enabled: !!id && hasPending,
-    refetchInterval: 2000,
-    refetchIntervalInBackground: false,
-  });
 
   if (isLoading) {
     return (

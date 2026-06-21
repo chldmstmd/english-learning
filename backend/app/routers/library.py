@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, nulls_last
 from sqlalchemy import func as sql_func
@@ -183,7 +183,6 @@ async def unsave_library_book(
 @router.get("/library/{article_id}", response_model=ArticleDetailResponse)
 async def get_library_article(
     article_id: str,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -206,31 +205,12 @@ async def get_library_article(
     else:
         db.add(UserReadingHistory(user_id=current_user.id, article_id=article_id))
 
-    # Lazy annotation sync: for vocab words in this article without an annotation yet,
-    # create pending records so translations are generated on open
-    existing_annotations = await annotation_service.get_article_annotations(db, article_id, current_user.id)
-    word_statuses = await vocab_service.get_all_word_statuses(db, current_user.id)
-    article_lemmas = {t["lemma"] for t in article.tokens if t["is_alpha"]}
-
-    new_pending = []
-    for word in word_statuses:
-        if word in article_lemmas and word not in existing_annotations:
-            new_pending.append(word)
-            await annotation_service.upsert_annotation(
-                db, article_id, current_user.id, word, gen_status="pending"
-            )
-
     await db.commit()
 
-    # Re-fetch annotations (now includes newly created pending ones)
     annotations = await annotation_service.get_article_annotations(db, article_id, current_user.id)
+    word_statuses = await vocab_service.get_all_word_statuses(db, current_user.id)
+    article_lemmas = {t["lemma"] for t in article.tokens if t["is_alpha"]}
     article_word_statuses = {w: s for w, s in word_statuses.items() if w in article_lemmas}
-
-    has_pending = any(a["gen_status"] == "pending" for a in annotations.values())
-    if has_pending:
-        background_tasks.add_task(
-            annotation_service.generate_pending_translations_task, article_id, current_user.id
-        )
 
     # Bookmark status
     is_bookmarked = bool(await db.scalar(

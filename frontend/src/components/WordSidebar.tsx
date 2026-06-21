@@ -1,7 +1,8 @@
 import React, { useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { X, Volume2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { X, Volume2, ArrowRight } from "lucide-react";
 import { api } from "../api/client";
 import { useSidebarStore } from "../store/sidebarStore";
 import { useVocabStore } from "../store/vocabStore";
@@ -20,8 +21,8 @@ export const WordSidebar: React.FC = () => {
   const { isOpen, word, lemma, sourceSentence, close } = useSidebarStore();
   const { setWordStatus } = useVocabStore();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
-  // Close on Escape key
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
@@ -44,13 +45,19 @@ export const WordSidebar: React.FC = () => {
 
   const statusMutation = useMutation({
     mutationFn: ({ word, status }: { word: string; status: string }) =>
-      api.patch(`vocab/${word}/status`, { json: { status } }),
+      api.patch(`vocab/${word}/status`, { json: { status }, searchParams: { force: "true" } }),
     onSuccess: (_, { word: w, status }) => {
       setWordStatus(w, status as never);
       queryClient.invalidateQueries({ queryKey: ["vocab-detail", w] });
       queryClient.invalidateQueries({ queryKey: ["vocab"] });
     },
   });
+
+  const goToLocation = (loc: VocabDetail["locations"][number]) => {
+    const base = loc.is_library ? "/library" : "/articles";
+    close();
+    navigate(`${base}/${loc.article_id}?sentence=${loc.sentence_index}`);
+  };
 
   return (
     <AnimatePresence>
@@ -88,11 +95,13 @@ export const WordSidebar: React.FC = () => {
           </div>
 
           <div className="flex-1 p-5 flex flex-col gap-5">
-            {/* Reviewing state: show translation prominently as "reveal" */}
-            {detail?.status === "reviewing" && detail.context_translation && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">语境翻译</p>
-                <p className="text-lg font-semibold text-gray-900">{detail.context_translation}</p>
+            {/* Chinese meaning (dictionary, word-level) — always shown once detail loads */}
+            {detail && (
+              <div className="bg-gray-50 border border-gray-100 rounded-lg p-4">
+                <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">中文词义</p>
+                <p className="text-lg font-semibold text-gray-900">
+                  {detail.context_translation ?? "打开查看释义"}
+                </p>
               </div>
             )}
 
@@ -100,7 +109,7 @@ export const WordSidebar: React.FC = () => {
               <p className="text-sm text-gray-400 animate-pulse">加载中...</p>
             )}
 
-            {/* Dictionary definitions */}
+            {/* English dictionary definitions */}
             {detail?.definitions && detail.definitions.length > 0 && (
               <section>
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
@@ -123,26 +132,61 @@ export const WordSidebar: React.FC = () => {
                 </div>
               </section>
             )}
+
+            {/* Click locations */}
+            {detail?.locations && detail.locations.length > 0 && (
+              <section>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                  你点过的位置
+                </h3>
+                <div className="space-y-2">
+                  {detail.locations.map((loc, i) => (
+                    <button
+                      key={i}
+                      onClick={() => goToLocation(loc)}
+                      className="w-full text-left border border-gray-200 rounded-lg p-2.5 hover:border-amber-400 transition-colors group"
+                    >
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
+                        <span className="truncate">{loc.article_title}</span>
+                        {loc.is_stale && (
+                          <span className="text-amber-600 shrink-0">(原文已修改)</span>
+                        )}
+                        <ArrowRight size={11} className="ml-auto shrink-0 text-gray-300 group-hover:text-amber-500" />
+                      </div>
+                      {loc.source_sentence && (
+                        <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{loc.source_sentence}</p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
 
-          {/* Reviewing actions — pinned to bottom */}
-          {detail?.status === "reviewing" && (
+          {/* Status actions — pinned to bottom */}
+          {detail && detail.status !== "unseen" && (
             <div className="p-5 border-t border-gray-100 flex gap-2">
-              <button
-                onClick={() => {
-                  if (lemma) statusMutation.mutate({ word: lemma, status: "mastered" });
-                  close();
-                }}
-                className="flex-1 bg-green-500 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-green-600 transition-colors"
-              >
-                已掌握
-              </button>
-              <button
-                onClick={close}
-                className="flex-1 bg-gray-100 text-gray-700 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-200 transition-colors"
-              >
-                再复习一次
-              </button>
+              {detail.status !== "mastered" ? (
+                <button
+                  onClick={() => {
+                    if (lemma) statusMutation.mutate({ word: lemma, status: "mastered" });
+                    close();
+                  }}
+                  className="flex-1 bg-green-500 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-green-600 transition-colors"
+                >
+                  标记已掌握
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    if (lemma) statusMutation.mutate({ word: lemma, status: "new" });
+                    close();
+                  }}
+                  className="flex-1 bg-gray-100 text-gray-700 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-200 transition-colors"
+                >
+                  重新加入学习
+                </button>
+              )}
             </div>
           )}
         </motion.aside>
