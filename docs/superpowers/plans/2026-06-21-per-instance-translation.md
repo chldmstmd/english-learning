@@ -204,19 +204,34 @@ git commit -m "$(printf 'feat: position-based article_annotations schema\n\nKey 
 
 Append to `backend/tests/test_position_annotations.py`:
 
+**Note:** `article_annotations.article_id` has an enforced FK to `articles.id`, and `user_id`/`article_id` are `String(36)` — so tests must seed an `articles` row first and use bare `str(uuid4())` (no prefix). This file's header (from Task 1) needs `from app.models.article import Article` added.
+
+Append to `backend/tests/test_position_annotations.py` (and add the `Article` import at top):
+
 ```python
+async def _seed_article(session_factory, article_id, user_id):
+    async with session_factory() as db:
+        db.add(Article(
+            id=article_id, user_id=user_id, title="t", raw_text="x",
+            tokens=[], sentences=[], word_count=0,
+        ))
+        await db.commit()
+
+
 async def _cleanup_anns(session_factory, user_id):
     async with session_factory() as db:
         await db.execute(delete(ArticleAnnotation).where(ArticleAnnotation.user_id == user_id))
+        await db.execute(delete(Article).where(Article.user_id == user_id))
         await db.commit()
 
 
 def test_same_lemma_different_positions_are_independent():
-    uid = f"test-pos-{uuid4()}"
-    aid = "article-x"
+    uid = str(uuid4())
+    aid = str(uuid4())
 
     async def scenario(session_factory):
         try:
+            await _seed_article(session_factory, aid, uid)
             async with session_factory() as db:
                 await annotation_service.upsert_annotation(
                     db, aid, uid, "bank", sentence_index=0, word_index=3,
@@ -239,11 +254,12 @@ def test_same_lemma_different_positions_are_independent():
 
 
 def test_get_annotations_skips_stale():
-    uid = f"test-stale-{uuid4()}"
-    aid = "article-y"
+    uid = str(uuid4())
+    aid = str(uuid4())
 
     async def scenario(session_factory):
         try:
+            await _seed_article(session_factory, aid, uid)
             async with session_factory() as db:
                 ann = await annotation_service.upsert_annotation(
                     db, aid, uid, "bank", sentence_index=0, word_index=3, translation="河岸",
@@ -431,24 +447,13 @@ Append to `backend/tests/test_position_annotations.py`:
 ```python
 def test_translate_endpoint_writes_position_annotation():
     """translate router upserts annotation keyed by the clicked position."""
-    uid = f"test-route-{uuid4()}"
-    aid = "article-z"
+    uid = str(uuid4())   # user_id is VARCHAR(36) — do NOT prefix (overflows)
+    aid = str(uuid4())
 
     async def scenario(session_factory):
         try:
-            # seed an article the user owns
-            from app.models.article import Article
-            async with session_factory() as db:
-                db.add(Article(
-                    id=aid, user_id=uid, title="t", raw_text="the bank",
-                    tokens=[{"text": "bank", "lemma": "bank", "index": 1,
-                             "sentence_index": 0, "is_alpha": True, "is_punct": False,
-                             "pos": "NN", "ws": ""}],
-                    sentences=[{"index": 0, "text": "the bank"}], word_count=1,
-                ))
-                await db.commit()
-
-            # call the service-level upsert path the router uses
+            # seed an article the user owns (article_id has an enforced FK to articles.id)
+            await _seed_article(session_factory, aid, uid)
             async with session_factory() as db:
                 await annotation_service.upsert_annotation(
                     db, aid, uid, "bank", sentence_index=0, word_index=1,
@@ -460,15 +465,11 @@ def test_translate_endpoint_writes_position_annotation():
             assert anns["0-1"]["translation"] == "银行"
         finally:
             await _cleanup_anns(session_factory, uid)
-            from app.models.article import Article
-            async with session_factory() as db:
-                await db.execute(delete(Article).where(Article.id == aid))
-                await db.commit()
 
     _run(scenario)
 ```
 
-(Need `from sqlalchemy import delete` already imported at top — it is via Task 1's import line.)
+(`_seed_article` and `_cleanup_anns` helpers already exist in this file from Task 2; `delete`/`Article` already imported at top.)
 
 - [ ] **Step 2: 运行测试，确认失败**
 
@@ -628,6 +629,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from app.config import settings
 from app.models.annotation import ArticleAnnotation
+from app.models.article import Article
 from app.services import annotation_service
 
 
@@ -644,11 +646,18 @@ def _run(coro_fn):
 
 
 def test_revalidate_marks_moved_word_stale_and_keeps_matching():
-    uid = f"test-edit-{uuid4()}"
-    aid = "edit-article"
+    uid = str(uuid4())   # user_id is VARCHAR(36) — no prefix
+    aid = str(uuid4())
 
     async def scenario(session_factory):
         try:
+            # article_id has an enforced FK to articles.id -> seed the article first
+            async with session_factory() as db:
+                db.add(Article(
+                    id=aid, user_id=uid, title="t", raw_text="x",
+                    tokens=[], sentences=[], word_count=0,
+                ))
+                await db.commit()
             async with session_factory() as db:
                 # two clicks: bank@(0,1) and loan@(0,4)
                 await annotation_service.upsert_annotation(
@@ -674,10 +683,13 @@ def test_revalidate_marks_moved_word_stale_and_keeps_matching():
         finally:
             async with session_factory() as db:
                 await db.execute(delete(ArticleAnnotation).where(ArticleAnnotation.article_id == aid))
+                await db.execute(delete(Article).where(Article.id == aid))
                 await db.commit()
 
     _run(scenario)
 ```
+
+> 注：此文件 (`test_edit_fallback.py`) 顶部 import 需包含 `from app.models.article import Article`（已在 Step 1 文件头），且 `from sqlalchemy import select, delete`。
 
 - [ ] **Step 2: 运行测试，确认失败/通过**
 
@@ -745,16 +757,17 @@ git commit -m "$(printf 'feat: articles router position annotations + edit fallb
 
 ---
 
-## Task 5: `library.py` —— 删除跨文章懒同步、位置键返回
+## Task 5: `library.py` + `books.py` —— 删除跨文章/章节预埋同步、位置键返回
 
 **Files:**
 - Modify: `backend/app/routers/library.py`
+- Modify: `backend/app/routers/books.py`
 
 **Interfaces:**
 - Consumes: `annotation_service.get_article_annotations`（Task 2，位置键）。
-- Produces: `GET /library/{article_id}` 不再为生词懒创建 pending 标注、不再触发 `generate_pending_translations_task`；`annotations` 为位置键 dict。
+- Produces: `GET /library/{article_id}` 不再为生词懒创建 pending 标注、不再触发 `generate_pending_translations_task`；`annotations` 为位置键 dict。`POST /books/{book_id}/chapters` 创建章节时不再为已知生词预埋 pending 标注（与 `create_article` 一致；旧调用用的是已删除的 lemma 签名，会 TypeError）。
 
-- [ ] **Step 1: 删除懒同步块**
+- [ ] **Step 1: 删除 library 懒同步块**
 
 In `backend/app/routers/library.py` `get_library_article`, replace the block currently at lines ~209-233 (from the `# Lazy annotation sync:` comment through the `has_pending`/background_tasks `if`) with:
 
@@ -767,27 +780,53 @@ In `backend/app/routers/library.py` `get_library_article`, replace the block cur
     article_word_statuses = {w: s for w, s in word_statuses.items() if w in article_lemmas}
 ```
 
-- [ ] **Step 2: 确认无残留 pending/sync 引用**
+- [ ] **Step 2: 删除 books 章节创建里的预埋块**
 
-Run:
-```bash
-cd backend && grep -rn "generate_pending_translations_task\|sync_word_to_user_articles_task\|gen_status == \"pending\"" app/ | grep -v __pycache__
+In `backend/app/routers/books.py` `create_chapter` (或相应的章节创建函数)，删除以下预埋循环（当前 ~142-148）：
+
+```python
+    word_statuses = await vocab_service.get_all_word_statuses(db, current_user.id)
+    article_lemmas = {t["lemma"] for t in tokens if t["is_alpha"]}
+    for word in word_statuses:
+        if word in article_lemmas:
+            await annotation_service.upsert_annotation(
+                db, article.id, current_user.id, word, gen_status="pending"
+            )
 ```
-Expected: 无结果（全部已清除）
 
-- [ ] **Step 3: 导入检查 + 全后端测试**
+使该函数从 `db.add(article)` / `await db.flush()` 直接进入：
+```python
+    db.add(article)
+    await db.flush()
+
+    await db.commit()
+    asyncio.create_task(batch_translation_service.translate_article(article.id))
+    return ArticleListItem.model_validate(article)
+```
+
+> 注：若 `vocab_service` / `annotation_service` 的 import 在删除后于 `books.py` 内不再被任何其它代码使用，移除对应 import 以免 lint 噪音；若仍被使用则保留。删除前用 `grep -n "vocab_service\|annotation_service" app/routers/books.py` 确认。
+
+- [ ] **Step 3: 确认无残留 pending/sync 引用 + 无旧签名 upsert 调用**
 
 Run:
 ```bash
-cd backend && .venv/bin/python -c "import app.routers.library; print('import ok')" && .venv/bin/python -m pytest tests/ -v
+cd backend && grep -rn "generate_pending_translations_task\|sync_word_to_user_articles_task\|gen_status=\"pending\"" app/ | grep -v __pycache__
+```
+Expected: 无结果（全部已清除；注意此前 articles.py/translate.py 已在 Task 3/4 清理）
+
+- [ ] **Step 4: 导入检查 + 全后端测试**
+
+Run:
+```bash
+cd backend && .venv/bin/python -c "import app.routers.library, app.routers.books; print('import ok')" && .venv/bin/python -m pytest tests/ -v
 ```
 Expected: `import ok` + 全部测试 PASS（包括既有的 test_translation_recovery / test_library_books 等未受影响）
 
-- [ ] **Step 4: 提交**
+- [ ] **Step 5: 提交**
 
 ```bash
-git add backend/app/routers/library.py
-git commit -m "$(printf 'feat: library reader drops cross-article lazy sync\n\nReturn position-keyed annotations; stop pre-seeding pending records\nfor vocab words (avoids translating a word across all articles).\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>')"
+git add backend/app/routers/library.py backend/app/routers/books.py
+git commit -m "$(printf 'feat: drop cross-article/chapter pre-seed sync in library + books\n\nlibrary reader returns position-keyed annotations and stops lazy\npending sync; book chapter creation stops pre-seeding pending\nannotations for vocab words (old lemma signature is gone).\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>')"
 ```
 
 ---
@@ -833,8 +872,8 @@ def _run(coro_fn):
 
 
 def test_locations_returns_recent_three():
-    uid = f"test-loc-{uuid4()}"
-    aid = f"loc-article-{uuid4()}"
+    uid = str(uuid4())   # user_id / article_id are VARCHAR(36) — no prefix
+    aid = str(uuid4())
 
     async def scenario(session_factory):
         try:
