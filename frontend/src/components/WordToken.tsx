@@ -44,9 +44,12 @@ export const WordToken: React.FC<Props> = ({ token, articleId, sentences, autoOp
     onMutate: () => {
       // optimistic highlight only for brand-new words; never downgrade an
       // already-tracked word (reviewing/mastered) to "new" on click.
-      if (getStatus(token.lemma) === "unseen") {
+      const wasUnseen = getStatus(token.lemma) === "unseen";
+      if (wasUnseen) {
         setWordStatus(token.lemma, "new");
       }
+      // pass to onError so we only roll back words THIS click just collected.
+      return { wasUnseen };
     },
     onSuccess: (data) => {
       setWordStatus(token.lemma, data.status);
@@ -57,9 +60,11 @@ export const WordToken: React.FC<Props> = ({ token, articleId, sentences, autoOp
         gen_status: "done",
       });
     },
-    onError: () => {
-      // roll back optimistic highlight only if nothing else marked it
-      if (getStatus(token.lemma) === "new" && !getAnnotation(articleId, token.sentence_index, token.index)) {
+    onError: (_err, _vars, context) => {
+      // roll back only the optimistic unseen→new promotion this click made;
+      // an already-collected "new" word clicked at a fresh position must NOT
+      // be downgraded just because its translate failed.
+      if (context?.wasUnseen && getStatus(token.lemma) === "new") {
         setWordStatus(token.lemma, "unseen");
       }
     },
@@ -72,14 +77,14 @@ export const WordToken: React.FC<Props> = ({ token, articleId, sentences, autoOp
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (status === "unseen") {
-      // 首次：翻译并收录为「新词」
+    // 需要翻译：未收录（首次收录）；或新词但此位置还没有译文（点新位置看答案）。
+    // 巩固中/已习得，或新词已显示译文：只开侧边栏（自测 / 管理）。
+    if (status === "unseen" || (status === "new" && !annotation?.translation)) {
       translateMutation.mutate();
       if (autoOpenSidebar) {
         openSidebar(token.text, token.lemma, articleId, getSentenceText());
       }
     } else {
-      // 已收录（new/reviewing/mastered）：打开侧边栏管理 / 自测
       openSidebar(token.text, token.lemma, articleId, getSentenceText());
     }
   };
