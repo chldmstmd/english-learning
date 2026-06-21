@@ -126,3 +126,21 @@ async def revalidate_article_annotations(
     for ann in rows:
         current = pos_lemma.get((ann.sentence_index, ann.word_index))
         ann.is_stale = current != ann.word
+
+
+async def delete_word_annotations(
+    db: AsyncSession, user_id: str, word: str
+) -> None:
+    """Delete all position annotations for a user's lemma across every article.
+
+    Used when a word is removed from vocabulary ("uncollect") so no stale
+    translation lingers in the reader. Caller commits.
+    """
+    rows = list(await db.scalars(
+        select(ArticleAnnotation).where(
+            ArticleAnnotation.user_id == user_id,
+            ArticleAnnotation.word == word,
+        )
+    ))
+    for ann in rows:
+        await db.delete(ann)

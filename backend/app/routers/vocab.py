@@ -48,6 +48,7 @@ async def delete_vocab(
     vocab = await vocab_service.get_word(db, current_user.id, word)
     if not vocab:
         raise HTTPException(status_code=404, detail="Word not found in vocabulary")
+    await annotation_service.delete_word_annotations(db, current_user.id, word)
     await db.delete(vocab)
     await db.commit()
 
