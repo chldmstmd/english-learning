@@ -4,14 +4,11 @@ import { api } from "../api/client";
 import { useVocabStore } from "../store/vocabStore";
 import { useSidebarStore } from "../store/sidebarStore";
 import { cn } from "../utils/cn";
-import type { Token, Sentence, TranslateResponse, WordStatus } from "../types";
+import type { Token, Sentence, TranslateResponse } from "../types";
 
-const STATUS_STYLES: Record<WordStatus, string> = {
-  unseen:    "cursor-pointer hover:bg-gray-100 rounded transition-colors",
-  new:       "text-red-600 underline decoration-red-400 decoration-solid cursor-pointer",
-  reviewing: "bg-yellow-100 border-b-2 border-yellow-400 cursor-pointer",
-  mastered:  "underline decoration-gray-300 decoration-dashed cursor-pointer",
-};
+// Single highlight for an in-progress vocab word (new/reviewing); mastered & unseen are unstyled.
+const VOCAB_HIGHLIGHT =
+  "underline decoration-amber-400 decoration-dashed underline-offset-4 cursor-pointer";
 
 interface Props {
   token: Token;
@@ -25,7 +22,7 @@ export const WordToken: React.FC<Props> = ({ token, articleId, sentences, autoOp
   const { open: openSidebar } = useSidebarStore();
 
   const status = getStatus(token.lemma);
-  const annotation = getAnnotation(articleId, token.lemma);
+  const annotation = getAnnotation(articleId, token.sentence_index, token.index);
 
   const getSentenceText = () =>
     sentences.find((s) => s.index === token.sentence_index)?.text ?? "";
@@ -45,11 +42,15 @@ export const WordToken: React.FC<Props> = ({ token, articleId, sentences, autoOp
         })
         .json<TranslateResponse>(),
     onMutate: () => {
-      setWordStatus(token.lemma, "new");
+      // optimistic highlight only for brand-new words; never downgrade an
+      // already-tracked word (reviewing/mastered) to "new" on click.
+      if (getStatus(token.lemma) === "unseen") {
+        setWordStatus(token.lemma, "new");
+      }
     },
     onSuccess: (data) => {
       setWordStatus(token.lemma, data.status);
-      setAnnotation(articleId, token.lemma, {
+      setAnnotation(articleId, token.sentence_index, token.index, {
         translation: data.translation,
         source_sentence: getSentenceText(),
         is_fallback: data.is_fallback,
@@ -57,34 +58,27 @@ export const WordToken: React.FC<Props> = ({ token, articleId, sentences, autoOp
       });
     },
     onError: () => {
-      setWordStatus(token.lemma, "unseen");
+      // roll back optimistic highlight only if nothing else marked it
+      if (getStatus(token.lemma) === "new" && !getAnnotation(articleId, token.sentence_index, token.index)) {
+        setWordStatus(token.lemma, "unseen");
+      }
     },
   });
 
-  const statusMutation = useMutation({
-    mutationFn: (newStatus: WordStatus) =>
-      api.patch(`vocab/${token.lemma}/status`, { json: { status: newStatus } }),
-    onMutate: (newStatus) => {
-      setWordStatus(token.lemma, newStatus);
-    },
-  });
+  const showTranslation = !!annotation?.translation;
+  // highlight = word is in vocab and not yet mastered
+  const highlighted = status === "new" || status === "reviewing";
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    switch (status) {
-      case "unseen":
-      case "mastered":
-        translateMutation.mutate();
-        if (autoOpenSidebar) {
-          openSidebar(token.text, token.lemma, articleId, getSentenceText());
-        }
-        break;
-      case "new":
-        statusMutation.mutate("reviewing");
-        break;
-      case "reviewing":
+    if (showTranslation) {
+      // already translated here -> manage the word
+      openSidebar(token.text, token.lemma, articleId, getSentenceText());
+    } else {
+      translateMutation.mutate();
+      if (autoOpenSidebar) {
         openSidebar(token.text, token.lemma, articleId, getSentenceText());
-        break;
+      }
     }
   };
 
@@ -98,24 +92,23 @@ export const WordToken: React.FC<Props> = ({ token, articleId, sentences, autoOp
     );
   }
 
-  const showTranslation = status === "new" && !!annotation?.translation;
-
   return (
     <>
       <ruby
-        className={cn(STATUS_STYLES[status])}
+        className={cn(
+          "cursor-pointer rounded hover:bg-gray-100 transition-colors",
+          highlighted && VOCAB_HIGHLIGHT
+        )}
         onClick={handleClick}
         data-word={token.lemma}
         data-status={status}
         aria-label={
-          showTranslation
-            ? `${token.text}, 翻译: ${annotation!.translation}`
-            : token.text
+          showTranslation ? `${token.text}, 翻译: ${annotation!.translation}` : token.text
         }
       >
         {token.text}
         {showTranslation ? (
-          <rt className="text-red-500 not-italic">
+          <rt className="text-red-500 not-italic text-[11px]">
             {annotation!.translation}
             {annotation!.is_fallback && (
               <span className="text-gray-400 text-[9px] ml-0.5">*</span>
