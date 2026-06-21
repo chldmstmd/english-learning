@@ -101,11 +101,9 @@ export default function VocabListPage() {
                     </span>
                   )}
                 </div>
-                {item.context_translation && (
-                  <p className="text-sm text-gray-500 mt-0.5 truncate">
-                    {item.context_translation}
-                  </p>
-                )}
+                <p className="text-sm text-gray-500 mt-0.5 truncate">
+                  {item.context_translation ?? "打开查看释义"}
+                </p>
               </div>
 
               {/* Status selector */}
