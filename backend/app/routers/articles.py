@@ -44,14 +44,6 @@ async def create_article(
     db.add(article)
     await db.flush()
 
-    word_statuses = await vocab_service.get_all_word_statuses(db, current_user.id)
-    article_lemmas = {t["lemma"] for t in tokens if t["is_alpha"]}
-    for word in word_statuses:
-        if word in article_lemmas:
-            await annotation_service.upsert_annotation(
-                db, article.id, current_user.id, word, gen_status="pending"
-            )
-
     await db.commit()
     return ArticleListItem.model_validate(article)
 
@@ -80,6 +72,9 @@ async def edit_article(
     article.sentences = sentences
     article.word_count = word_count
     article.translation_status = "stale"
+
+    # Position annotations may now point at different words -> mark mismatches stale.
+    await annotation_service.revalidate_article_annotations(db, article_id, tokens)
 
     # If sentence count changed, the saved resume anchor is no longer valid -> reset to chapter start
     if len(sentences) != old_sentence_count:
@@ -211,12 +206,6 @@ async def get_article(
 
     article_lemmas = {t["lemma"] for t in article.tokens if t["is_alpha"]}
     article_word_statuses = {w: s for w, s in word_statuses.items() if w in article_lemmas}
-
-    has_pending = any(a["gen_status"] == "pending" for a in annotations.values())
-    if has_pending:
-        background_tasks.add_task(
-            annotation_service.generate_pending_translations_task, article_id, current_user.id
-        )
 
     return ArticleDetailResponse(
         id=article.id,
