@@ -423,7 +423,10 @@ function BooksTab() {
 
   const deleteBookMutation = useMutation({
     mutationFn: (id: string) => api.delete(`admin/library/books/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["library-books"] }),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ["library-books"] });
+      setBookForm((f) => (f.editId === id ? EMPTY_BOOK_FORM : f));
+    },
   });
 
   const addChapterMutation = useMutation({
