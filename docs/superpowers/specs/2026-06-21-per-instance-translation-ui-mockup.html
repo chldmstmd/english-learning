@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>按位置翻译 — UI Mockup</title>
+<style>
+  :root {
+    --highlight: #f59e0b;       /* 生词高亮：琥珀色 */
+    --translation: #dc2626;     /* 点击处译文：红色 */
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --bg: #f9fafb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "PingFang SC", "Segoe UI", system-ui, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 80px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .legend {
+    display: flex; gap: 20px; flex-wrap: wrap; background: #fff;
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px;
+    margin-bottom: 24px; font-size: 13px;
+  }
+  .legend b { font-weight: 600; }
+  .swatch { display: inline-flex; align-items: center; gap: 6px; }
+  .layout { display: grid; grid-template-columns: 1fr 320px; gap: 20px; align-items: start; }
+  .panel { background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+  .panel-h {
+    font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .04em; padding: 12px 18px; border-bottom: 1px solid var(--line);
+  }
+  .reader { padding: 22px 26px; font-family: Georgia, "Songti SC", serif; font-size: 18px; line-height: 2.0; }
+
+  /* ---- 词样式 ---- */
+  .w { cursor: pointer; border-radius: 3px; padding: 0 1px; position: relative; }
+  .w:hover { background: #f3f4f6; }
+
+  /* 轨道 A：生词高亮（未掌握）—— 单一琥珀虚线下划线 */
+  .vocab {
+    text-decoration: underline;
+    text-decoration-color: var(--highlight);
+    text-decoration-style: dashed;
+    text-underline-offset: 3px;
+  }
+  /* mastered：退出高亮（普通词，演示用，无特殊样式） */
+
+  /* 轨道 B：点击处译文（ruby 上方红字） */
+  ruby { ruby-position: over; }
+  ruby.clicked > rt {
+    color: var(--translation); font-family: -apple-system, sans-serif;
+    font-size: 11px; font-weight: 600; line-height: 1.2;
+  }
+  ruby > rt:empty { display: none; }
+  /* 点击处：实底强调，证明"就是这一处" */
+  ruby.clicked {
+    background: #fef2f2;
+    border-radius: 3px;
+  }
+
+  .fade { color: var(--muted); }
+
+  /* ---- 侧栏 ---- */
+  .side { font-size: 14px; }
+  .side .body { padding: 16px 18px; }
+  .side .word { font-size: 24px; font-weight: 700; }
+  .side .phon { color: var(--muted); font-size: 13px; margin-left: 8px; }
+  .side .cn { margin: 10px 0; font-size: 15px; }
+  .side .cn .label, .side .en .label, .side .pos-block .label {
+    display: block; font-size: 11px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .04em; margin-bottom: 3px;
+  }
+  .side .en { margin: 14px 0; border-top: 1px dashed var(--line); padding-top: 12px; }
+  .def { margin: 8px 0; }
+  .def .pos { font-style: italic; color: var(--muted); font-size: 12px; }
+  .def .ex { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .locs { border-top: 1px dashed var(--line); padding-top: 12px; margin-top: 14px; }
+  .loc {
+    display: block; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+    margin-bottom: 7px; font-size: 12.5px; text-decoration: none; color: var(--ink);
+    background: #fafafa;
+  }
+  .loc:hover { border-color: var(--highlight); }
+  .loc .ttl { font-weight: 600; }
+  .loc .snip { color: var(--muted); }
+  .loc.stale { opacity: .65; }
+  .loc.stale .tag { color: #b45309; font-size: 11px; }
+  .status-row { display: flex; gap: 8px; margin: 14px 0 4px; }
+  .chip {
+    font-size: 12px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line);
+    cursor: pointer; background: #fff;
+  }
+  .chip.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  /* ---- 单词表 ---- */
+  .vocab-list { margin-top: 28px; }
+  .vrow { display: grid; grid-template-columns: 180px 1fr 240px; gap: 16px; padding: 16px 18px; border-bottom: 1px solid var(--line); align-items: start; }
+  .vrow:last-child { border-bottom: none; }
+  .vrow .head .w2 { font-size: 18px; font-weight: 700; }
+  .vrow .head .phon { color: var(--muted); font-size: 12px; }
+  .vrow .head .st { display: inline-block; margin-top: 6px; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #fef3c7; color: #92400e; }
+  .vrow .head .st.mastered { background: #e5e7eb; color: #6b7280; }
+  .vrow .means .cn2 { font-size: 14px; }
+  .vrow .means details { margin-top: 6px; }
+  .vrow .means summary { font-size: 12px; color: var(--muted); cursor: pointer; }
+  .vrow .means .endef { font-size: 12.5px; margin: 6px 0 0; padding-left: 4px; }
+  .vrow .links .ln { display: block; font-size: 12px; color: #2563eb; text-decoration: none; margin-bottom: 5px; }
+  .vrow .links .ln:hover { text-decoration: underline; }
+  .vrow .links .ln.stale { color: #b45309; }
+  .note { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+  .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 14px 0 30px; }
+  .cmp .box { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .cmp .box h3 { margin: 0 0 8px; font-size: 13px; }
+  .cmp .old { border-left: 3px solid #ef4444; }
+  .cmp .new { border-left: 3px solid #10b981; }
+  .cmp .tag { font-size: 11px; font-weight: 600; }
+  .cmp .old .tag { color: #ef4444; }
+  .cmp .new .tag { color: #10b981; }
+  .demoline { font-family: Georgia, serif; font-size: 17px; line-height: 2.2; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>按位置翻译 + 单词表重构 — UI Mockup</h1>
+  <div class="sub">2026-06-21 · 配合设计文档 <code>2026-06-21-per-instance-translation-design.md</code> · 仅静态示意，颜色/间距非最终</div>
+
+  <div class="legend">
+    <span class="swatch"><span class="vocab" style="font-family:Georgia,serif">bank</span> <b>生词高亮</b>（轨道A：在生词本且未掌握，琥珀虚线，全文同词一致）</span>
+    <span class="swatch"><ruby class="clicked" style="font-family:Georgia,serif">bank<rt>银行</rt></ruby> <b>点击处译文</b>（轨道B：仅你点的那一处，红字，按本句翻译）</span>
+    <span class="swatch"><span style="font-family:Georgia,serif">bank</span> <b>普通词 / 已掌握</b>（无样式）</span>
+  </div>
+
+  <!-- 对比：旧 vs 新 -->
+  <div class="cmp">
+    <div class="box old">
+      <span class="tag">改造前</span>
+      <h3>点第 1 个 bank → 全文 bank 一起变红、一起显示同一译文</h3>
+      <div class="demoline">
+        I sat by the
+        <ruby class="clicked" style="background:#fef2f2">bank<rt style="color:var(--translation);font-size:11px">银行?</rt></ruby>
+        of the river. The
+        <ruby class="clicked" style="background:#fef2f2">bank<rt style="color:var(--translation);font-size:11px">银行?</rt></ruby>
+        approved my loan.
+      </div>
+      <p class="note">问题：河岸的 bank 也被翻成"银行"；一词多义无法区分；重开时同词标红却可能没译文。</p>
+    </div>
+    <div class="box new">
+      <span class="tag">改造后</span>
+      <h3>点哪个翻哪个，按本句精准；其它同词只给生词高亮</h3>
+      <div class="demoline">
+        I sat by the
+        <ruby class="clicked"><span class="vocab">bank</span><rt>河岸</rt></ruby>
+        of the river. The
+        <span class="vocab">bank</span>
+        approved my loan.
+      </div>
+      <p class="note">第 1 处按"river"语境翻成"河岸"并显示；第 2 处仅生词高亮（提示是生词），想看点一下会按它自己的句子翻成"银行"。</p>
+    </div>
+  </div>
+
+  <!-- 主布局：阅读视图 + 侧栏 -->
+  <div class="layout">
+    <div class="panel">
+      <div class="panel-h">阅读视图 · Reader</div>
+      <div class="reader">
+        The young
+        <ruby class="w clicked"><span class="vocab">entrepreneur</span><rt>企业家</rt></ruby>
+        walked into the
+        <span class="w vocab">bank</span>
+        to secure a
+        <span class="w vocab">loan</span>.
+        She had spent months refining her
+        <ruby class="w clicked"><span class="vocab">prototype</span><rt>原型</rt></ruby>,
+        and the
+        <span class="w vocab">venture</span>
+        finally looked
+        <span class="w">promising</span>.
+        Later that day she sat by the
+        <span class="w vocab">bank</span>
+        of the river, reflecting on how far the
+        <span class="w">company</span>
+        had come — a word she had long since
+        <span class="w">mastered</span>.
+      </div>
+    </div>
+
+    <!-- 侧栏：点击已显示译文的词后打开 -->
+    <div class="panel side">
+      <div class="panel-h">侧栏 · 管理这个词</div>
+      <div class="body">
+        <div>
+          <span class="word">bank</span><span class="phon">/bæŋk/</span>
+        </div>
+
+        <div class="cn">
+          <span class="label">中文词义（通用）</span>
+          银行；河岸；堤；存储
+        </div>
+
+        <div class="status-row">
+          <span class="chip">学习中</span>
+          <span class="chip active">复习中</span>
+          <span class="chip">已掌握</span>
+        </div>
+        <p class="note">学习状态在侧栏切换（不再画进正文颜色）。标记"已掌握"后正文取消高亮。</p>
+
+        <div class="en">
+          <span class="label">英文释义 · 音标 · 例句</span>
+          <div class="def">
+            <span class="pos">n.</span> the land alongside a river or lake.
+            <div class="ex">"they walked along the river bank"</div>
+          </div>
+          <div class="def">
+            <span class="pos">n.</span> a financial establishment that uses money deposited by customers.
+            <div class="ex">"I paid the money into my bank"</div>
+          </div>
+        </div>
+
+        <div class="locs">
+          <span class="label">你点过的位置（最近 3 处）</span>
+          <a class="loc" href="#">
+            <span class="ttl">The Startup Diaries · 第 2 句</span>
+            <div class="snip">"...walked into the <b>bank</b> to secure a loan."</div>
+          </a>
+          <a class="loc" href="#">
+            <span class="ttl">The Startup Diaries · 第 5 句</span>
+            <div class="snip">"...sat by the <b>bank</b> of the river..."</div>
+          </a>
+          <a class="loc stale" href="#">
+            <span class="ttl">Old Notes · <span class="tag">(原文已修改)</span></span>
+            <div class="snip">位置失效 → 跳到文章开头</div>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 单词表 -->
+  <div class="panel vocab-list">
+    <div class="panel-h">单词表 · Vocabulary（辅助，按词 lemma）</div>
+    <div>
+      <div class="vrow">
+        <div class="head">
+          <div class="w2">bank</div>
+          <div class="phon">/bæŋk/</div>
+          <span class="st">复习中</span>
+        </div>
+        <div class="means">
+          <div class="cn2">银行；河岸；堤</div>
+          <details>
+            <summary>英文释义 · 例句</summary>
+            <div class="endef"><i>n.</i> the land alongside a river.<br><i>n.</i> a financial establishment...</div>
+          </details>
+        </div>
+        <div class="links">
+          <a class="ln" href="#">① The Startup Diaries · 第 2 句 →</a>
+          <a class="ln" href="#">② The Startup Diaries · 第 5 句 →</a>
+          <a class="ln stale" href="#">③ Old Notes · (原文已修改) →</a>
+        </div>
+      </div>
+
+      <div class="vrow">
+        <div class="head">
+          <div class="w2">entrepreneur</div>
+          <div class="phon">/ˌɒntrəprəˈnɜː/</div>
+          <span class="st">学习中</span>
+        </div>
+        <div class="means">
+          <div class="cn2">企业家；创业者</div>
+          <details>
+            <summary>英文释义 · 例句</summary>
+            <div class="endef"><i>n.</i> a person who sets up a business, taking on financial risks.</div>
+          </details>
+        </div>
+        <div class="links">
+          <a class="ln" href="#">① The Startup Diaries · 第 1 句 →</a>
+        </div>
+      </div>
+
+      <div class="vrow">
+        <div class="head">
+          <div class="w2">company</div>
+          <div class="phon">/ˈkʌmpəni/</div>
+          <span class="st mastered">已掌握</span>
+        </div>
+        <div class="means">
+          <div class="cn2">公司；陪伴</div>
+          <details>
+            <summary>英文释义 · 例句</summary>
+            <div class="endef"><i>n.</i> a commercial business.</div>
+          </details>
+        </div>
+        <div class="links">
+          <span class="note">已掌握 → 正文不再高亮；位置链接保留供回顾</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="note" style="margin-top:24px">
+    说明：① 正文里 <span class="vocab" style="font-family:Georgia,serif">琥珀虚线</span> = 生词高亮（轨道A，按词、跨文章、不带译文、省 token）。
+    ② <ruby class="clicked" style="font-family:Georgia,serif">红字<rt>译文</rt></ruby> = 仅点击处译文（轨道B，按位置、按本句翻译、持久化）。
+    ③ "promising"、"company"、"mastered" 等普通/已掌握词无样式。
+    ④ 点未显示译文的词 → 显示本处译文；点已显示译文的词 → 开侧栏。
+  </p>
+</div>
+</body>
+</html>
