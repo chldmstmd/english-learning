@@ -174,7 +174,7 @@ export const WordSidebar: React.FC = () => {
                   }}
                   className="flex-1 bg-gray-100 text-gray-700 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-200 transition-colors"
                 >
-                  隐藏译文
+                  进入巩固
                 </button>
               )}
               {detail.status === "reviewing" && (
@@ -185,7 +185,7 @@ export const WordSidebar: React.FC = () => {
                   }}
                   className="flex-1 bg-gray-100 text-gray-700 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-200 transition-colors"
                 >
-                  显示译文
+                  退回新词
                 </button>
               )}
               {detail.status !== "mastered" ? (

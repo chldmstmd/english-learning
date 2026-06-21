@@ -57,12 +57,12 @@
 
 这个差异在任何位置成立，与 per-instance 的译文是否已存在无关。
 
-### 「隐藏译文」的落点
+### 进入巩固 / 退回新词的落点
 
-侧边栏新增按钮，把这个一直缺失的 `new → reviewing` 入口补上，并补上反向开关，形成可逆 toggle：
+侧边栏新增按钮，把这个一直缺失的 `new → reviewing` 入口补上，并补上反向开关，形成可逆 toggle。按钮命名表达**学习动作**（而非"隐藏/显示译文"这种显示效果）——译文随状态派生消失/恢复是动作的自然结果：
 
-- 状态 `new` 时显示 **「隐藏译文」**（→ reviewing）：一键把这个词在所有地方从“喂答案”切到“自测”。
-- 状态 `reviewing` 时显示 **「显示译文」**（→ new）：撤销隐藏。
+- 状态 `new` 时显示 **「进入巩固」**（→ reviewing）：一键把这个词在所有地方从"喂答案"切到"自测"，译文随之收起。
+- 状态 `reviewing` 时显示 **「退回新词」**（→ new）：撤销，译文随之恢复。
 - 「标记已掌握」（→ mastered）/「重新加入学习」（→ new）按现有逻辑保留。
 
 ## 改动清单
@@ -108,9 +108,9 @@ await db.commit()
   这是对 bug 的“双保险”：即便有残留标注，unseen 词也能重新翻译。
 - `aria-label` 同步用新的 `showTranslation`。
 
-**4. `WordSidebar.tsx`** — 底部操作区按 status 渲染：
-- `new`：`[隐藏译文 → reviewing]` `[标记已掌握 → mastered]`
-- `reviewing`：`[显示译文 → new]` `[标记已掌握 → mastered]`
+**4. `WordSidebar.tsx`** — 底部操作区按 status 渲染。按钮文案表达「学习动作」而非「显示效果」——译文消失/恢复是状态切换的自然结果，不单独命名：
+- `new`：`[进入巩固 → reviewing]` `[标记已掌握 → mastered]`
+- `reviewing`：`[退回新词 → new]` `[标记已掌握 → mastered]`
 - `mastered`：`[重新加入学习 → new]`
 
 复用现有 `statusMutation`（已带 `force=true`，可任意流转），成功后 `setWordStatus` + 失效 `vocab` / `vocab-detail` 查询。
@@ -121,7 +121,7 @@ await db.commit()
   - 第一层（即时显示）：未收录把状态置为 `unseen`，`WordToken` 的 `showTranslation = !!annotation?.translation && status === "new"` 立即判否 —— 即便内存里还残留该位置标注，译文也不会显示，且点击走 `status==="unseen"` 分支可重新翻译。这是显示正确性的根本保障，不依赖任何刷新。
   - 第二层（数据清理）：后端删除该 lemma 的所有 `ArticleAnnotation`；前端在未收录的 `onSuccess` 里 **主动失效** `["article"]` / `["library-article"]` 查询，迫使文章重新拉取，`initFromArticle` 重新 seed store 时被删标注不再返回。
   - 注意：全局 `staleTime: 30_000`（见 `main.tsx`），若不主动失效，30s 内回到文章不会自动刷新 —— 因此第二层显式 invalidate 是必需的，不能依赖“挂载即刷新”。`wordStatuses` 用合并，本地遗留的 `unseen` 条目无害（`getStatus` 本就回落 unseen）。前端无法按 lemma 清理内存标注（标注按位置存、不带 lemma），故依赖后端删除 + 主动失效刷新。
-- **隐藏/显示译文**：`statusMutation` 成功后 `setWordStatus(lemma, ...)` 立即更新 store，`WordToken` 经 `getStatus` 重渲染，头顶译文随 `showTranslation` 公式立即显隐，无需刷新文章。
+- **进入巩固 / 退回新词**：`statusMutation` 成功后 `setWordStatus(lemma, ...)` 立即更新 store，`WordToken` 经 `getStatus` 重渲染，头顶译文随 `showTranslation` 公式立即显隐，无需刷新文章。
 
 ## 明确的取舍（YAGNI）
 
@@ -131,6 +131,6 @@ await db.commit()
 ## 测试要点
 
 1. **bug 修复**：点词→收录→单词库改「未收录」→回文章：译文消失、高亮消失、可重新点击翻译并重新收录；删词后该 lemma 的 `ArticleAnnotation` 全部清空。
-2. **隐藏译文**：新词点开侧边栏→「隐藏译文」→词变 reviewing、头顶译文消失、高亮仍在；再点该词开侧边栏出现「显示译文」→点击→译文恢复。
+2. **进入巩固 / 退回新词**：新词点开侧边栏→「进入巩固」→词变 reviewing、头顶译文消失、高亮仍在；再点该词开侧边栏出现「退回新词」→点击→词变回 new、译文恢复。
 3. **巩固中点新位置**：reviewing 词在未点过的位置点击→不贴译文、直接开侧边栏；new 词在新位置点击→译文贴头顶。
 4. **已习得**：mastered 词无高亮、无译文，点击开侧边栏，可「重新加入学习」。
