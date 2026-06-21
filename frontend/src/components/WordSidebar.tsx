@@ -95,11 +95,13 @@ export const WordSidebar: React.FC = () => {
           </div>
 
           <div className="flex-1 p-5 flex flex-col gap-5">
-            {/* Chinese meaning (dictionary, word-level) */}
-            {detail?.context_translation && (
+            {/* Chinese meaning (dictionary, word-level) — always shown once detail loads */}
+            {detail && (
               <div className="bg-gray-50 border border-gray-100 rounded-lg p-4">
                 <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">中文词义</p>
-                <p className="text-lg font-semibold text-gray-900">{detail.context_translation}</p>
+                <p className="text-lg font-semibold text-gray-900">
+                  {detail.context_translation ?? "打开查看释义"}
+                </p>
               </div>
             )}
 
