@@ -28,3 +28,4 @@ class VocabDetailResponse(BaseModel):
     context_translation: str | None
     source_sentence: str | None
     definitions: list[dict]
+    locations: list[dict] = []
