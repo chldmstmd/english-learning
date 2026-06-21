@@ -166,6 +166,28 @@ export const WordSidebar: React.FC = () => {
           {/* Status actions — pinned to bottom */}
           {detail && detail.status !== "unseen" && (
             <div className="p-5 border-t border-gray-100 flex gap-2">
+              {detail.status === "new" && (
+                <button
+                  onClick={() => {
+                    if (lemma) statusMutation.mutate({ word: lemma, status: "reviewing" });
+                    close();
+                  }}
+                  className="flex-1 bg-gray-100 text-gray-700 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-200 transition-colors"
+                >
+                  隐藏译文
+                </button>
+              )}
+              {detail.status === "reviewing" && (
+                <button
+                  onClick={() => {
+                    if (lemma) statusMutation.mutate({ word: lemma, status: "new" });
+                    close();
+                  }}
+                  className="flex-1 bg-gray-100 text-gray-700 rounded-lg py-2.5 text-sm font-medium hover:bg-gray-200 transition-colors"
+                >
+                  显示译文
+                </button>
+              )}
               {detail.status !== "mastered" ? (
                 <button
                   onClick={() => {
