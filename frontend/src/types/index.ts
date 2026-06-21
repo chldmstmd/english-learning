@@ -21,6 +21,7 @@ export interface Annotation {
   source_sentence: string | null;
   is_fallback: boolean;
   gen_status: "pending" | "done" | "failed";
+  is_stale?: boolean;
 }
 
 export interface ArticleListItem {
@@ -128,6 +129,15 @@ export interface VocabItem {
   updated_at: string;
 }
 
+export interface VocabLocation {
+  article_id: string;
+  article_title: string;
+  is_library: boolean;
+  sentence_index: number;
+  source_sentence: string | null;
+  is_stale: boolean;
+}
+
 export interface VocabDetail {
   word: string;
   phonetic: string | null;
@@ -139,6 +149,7 @@ export interface VocabDetail {
     definition: string;
     example: string;
   }>;
+  locations: VocabLocation[];
 }
 
 export interface TranslateResponse {

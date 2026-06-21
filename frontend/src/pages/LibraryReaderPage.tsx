@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Bookmark, BookmarkCheck, ExternalLink } from "lucide-react";
@@ -17,7 +17,7 @@ const DIFFICULTY_LABELS: Record<Difficulty, string> = {
 export default function LibraryReaderPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
-  const { initFromArticle, mergeAnnotations, articleAnnotations } = useVocabStore();
+  const { initFromArticle, articleAnnotations } = useVocabStore();
   const { close: closeSidebar } = useSidebarStore();
   const [showBookmarkPrompt, setShowBookmarkPrompt] = useState(false);
 
@@ -70,26 +70,6 @@ export default function LibraryReaderPage() {
     localStorage.setItem(promptedKey, JSON.stringify(prompted));
     setShowBookmarkPrompt(true);
   }, [id, article?.is_bookmarked, articleAnnotations]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const hasPending = useMemo(() => {
-    if (!id || !articleAnnotations[id]) return false;
-    return Object.values(articleAnnotations[id]).some((a) => a.gen_status === "pending");
-  }, [id, articleAnnotations]);
-
-  useQuery({
-    queryKey: ["library-annotations-poll", id],
-    queryFn: async () => {
-      // Library articles share the same annotation endpoint as user articles
-      const anns = await api
-        .get(`articles/${id}/annotations`)
-        .json<Record<string, import("../types").Annotation>>();
-      if (id) mergeAnnotations(id, anns);
-      return anns;
-    },
-    enabled: !!id && hasPending,
-    refetchInterval: 2000,
-    refetchIntervalInBackground: false,
-  });
 
   if (isLoading) {
     return (
