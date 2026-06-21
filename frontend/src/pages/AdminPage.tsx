@@ -355,12 +355,20 @@ function BookChapterList({
 }
 
 type BookFormState = {
+  mode: "create" | "edit";
+  editId: string | null;
   title: string;
   cover_image_url: string;
   source_category: string;
 };
 
-const EMPTY_BOOK_FORM: BookFormState = { title: "", cover_image_url: "", source_category: "" };
+const EMPTY_BOOK_FORM: BookFormState = {
+  mode: "create",
+  editId: null,
+  title: "",
+  cover_image_url: "",
+  source_category: "",
+};
 
 type ChapterFormState = {
   book_id: string;
@@ -396,6 +404,20 @@ function BooksTab() {
     onError: async (err: any) => {
       const msg = await err.response?.json().catch(() => null);
       setBookFormError(msg?.detail ?? "创建失败");
+    },
+  });
+
+  const editBookMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: object }) =>
+      api.patch(`admin/library/books/${id}`, { json: body }).json(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["library-books"] });
+      setBookForm(EMPTY_BOOK_FORM);
+      setBookFormError("");
+    },
+    onError: async (err: any) => {
+      const msg = await err.response?.json().catch(() => null);
+      setBookFormError(msg?.detail ?? "保存失败");
     },
   });
 
@@ -466,11 +488,16 @@ function BooksTab() {
   function handleBookSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBookFormError("");
-    createBookMutation.mutate({
+    const payload = {
       title: bookForm.title,
       cover_image_url: bookForm.cover_image_url || null,
       source_category: bookForm.source_category || null,
-    });
+    };
+    if (bookForm.mode === "create") {
+      createBookMutation.mutate(payload);
+    } else if (bookForm.editId) {
+      editBookMutation.mutate({ id: bookForm.editId, body: payload });
+    }
   }
 
   function handleChapterSubmit(e: React.FormEvent) {
@@ -507,13 +534,32 @@ function BooksTab() {
                   <p className="text-xs text-gray-400">{book.chapter_count} 章</p>
                 </div>
               </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); handleDeleteBook(book); }}
-                className="p-1.5 text-gray-400 hover:text-red-500 transition-colors shrink-0"
-                title="删除图书"
-              >
-                <Trash2 size={14} />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setBookForm({
+                      mode: "edit",
+                      editId: book.id,
+                      title: book.title,
+                      cover_image_url: book.cover_image_url ?? "",
+                      source_category: book.source_category ?? "",
+                    });
+                    setBookFormError("");
+                  }}
+                  className="p-1.5 text-gray-400 hover:text-blue-500 transition-colors"
+                  title="编辑图书"
+                >
+                  <Pencil size={14} />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDeleteBook(book); }}
+                  className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                  title="删除图书"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </div>
             {expandedBookId === book.id && (
               <BookChapterList
@@ -534,7 +580,16 @@ function BooksTab() {
       <div className="w-1/2 space-y-6">
         {/* Create book form */}
         <div>
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">新建图书</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-700">
+              {bookForm.mode === "create" ? "新建图书" : "编辑图书"}
+            </h2>
+            {bookForm.mode === "edit" && (
+              <button onClick={() => setBookForm(EMPTY_BOOK_FORM)} className="text-gray-400 hover:text-gray-600">
+                <X size={16} />
+              </button>
+            )}
+          </div>
           <form onSubmit={handleBookSubmit} className="space-y-3">
             <input
               type="text"
@@ -563,10 +618,12 @@ function BooksTab() {
             {bookFormError && <p className="text-xs text-red-500">{bookFormError}</p>}
             <button
               type="submit"
-              disabled={createBookMutation.isPending}
+              disabled={createBookMutation.isPending || editBookMutation.isPending}
               className="w-full py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
             >
-              {createBookMutation.isPending ? "创建中..." : "创建图书"}
+              {bookForm.mode === "create"
+                ? createBookMutation.isPending ? "创建中..." : "创建图书"
+                : editBookMutation.isPending ? "保存中..." : "保存修改"}
             </button>
           </form>
         </div>
