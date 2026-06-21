@@ -42,9 +42,6 @@ async def translate_word(
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
 
-    if body.sentence_index is None or body.word_index is None:
-        raise HTTPException(status_code=422, detail="sentence_index and word_index are required")
-
     vocab = await vocab_service.upsert_word(
         db, current_user.id, body.lemma, source_sentence=body.sentence
     )
