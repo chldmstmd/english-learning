@@ -17,7 +17,7 @@ from app.schemas.article import (
     ArticleListItem,
     LibraryArticleListItem,
 )
-from app.schemas.book import BookCreateRequest, ChapterCreateRequest, ChapterPatchRequest, LibraryBookListItem
+from app.schemas.book import BookCreateRequest, BookPatchRequest, ChapterCreateRequest, ChapterPatchRequest, LibraryBookListItem
 from app.services import annotation_service, batch_translation_service, nlp_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -141,6 +141,36 @@ async def create_library_book(
     await db.commit()
     item = LibraryBookListItem.model_validate(book)
     item.chapter_count = 0
+    return item
+
+
+@router.patch("/library/books/{book_id}", response_model=LibraryBookListItem)
+async def update_library_book(
+    book_id: str,
+    body: BookPatchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_content_admin),
+):
+    book = await db.scalar(
+        select(Book).where(Book.id == book_id, Book.is_library == True)  # noqa: E712
+    )
+    if not book:
+        raise HTTPException(status_code=404, detail="Library book not found")
+
+    if body.title is not None:
+        book.title = body.title
+    if body.cover_image_url is not None:
+        book.cover_image_url = body.cover_image_url
+    if body.source_category is not None:
+        book.source_category = body.source_category
+
+    await db.commit()
+
+    chapter_count = await db.scalar(
+        select(func.count(Article.id)).where(Article.book_id == book_id)
+    )
+    item = LibraryBookListItem.model_validate(book)
+    item.chapter_count = chapter_count or 0
     return item
 
 

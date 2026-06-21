@@ -66,3 +66,9 @@ class LibraryBookListItem(BaseModel):
 class ChapterPatchRequest(BaseModel):
     title: str | None = None
     raw_text: str | None = None
+
+
+class BookPatchRequest(BaseModel):
+    title: str | None = None
+    cover_image_url: str | None = None
+    source_category: str | None = None

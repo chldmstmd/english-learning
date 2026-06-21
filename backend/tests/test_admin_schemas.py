@@ -27,3 +27,19 @@ def test_admin_article_patch_all_none():
     assert req.title is None
     assert req.difficulty is None
     assert req.source_category is None
+
+
+def test_book_patch_all_none():
+    from app.schemas.book import BookPatchRequest
+    req = BookPatchRequest()
+    assert req.title is None
+    assert req.cover_image_url is None
+    assert req.source_category is None
+
+
+def test_book_patch_partial():
+    from app.schemas.book import BookPatchRequest
+    req = BookPatchRequest(title="New Title")
+    assert req.title == "New Title"
+    assert req.cover_image_url is None
+    assert req.source_category is None
