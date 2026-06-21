@@ -1,13 +1,18 @@
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.annotation import ArticleAnnotation
+from app.models.article import Article
+
+
+def _key(sentence_index: int, word_index: int) -> str:
+    return f"{sentence_index}-{word_index}"
 
 
 async def get_article_annotations(
     db: AsyncSession, article_id: str, user_id: str
 ) -> dict[str, dict]:
-    """Return {word: annotation_dict} for a given article."""
+    """Return {"{sidx}-{widx}": annotation_dict} for a given article, skipping stale ones."""
     rows = list(await db.scalars(
         select(ArticleAnnotation).where(
             ArticleAnnotation.article_id == article_id,
@@ -15,26 +20,16 @@ async def get_article_annotations(
         )
     ))
     return {
-        ann.word: {
+        _key(ann.sentence_index, ann.word_index): {
             "translation": ann.translation,
             "source_sentence": ann.source_sentence,
             "is_fallback": ann.is_fallback,
             "gen_status": ann.gen_status,
+            "is_stale": ann.is_stale,
         }
         for ann in rows
+        if not ann.is_stale
     }
-
-
-async def get_pending_annotations(
-    db: AsyncSession, article_id: str, user_id: str
-) -> list[ArticleAnnotation]:
-    return list(await db.scalars(
-        select(ArticleAnnotation).where(
-            ArticleAnnotation.article_id == article_id,
-            ArticleAnnotation.user_id == user_id,
-            ArticleAnnotation.gen_status == "pending",
-        )
-    ))
 
 
 async def upsert_annotation(
@@ -42,6 +37,8 @@ async def upsert_annotation(
     article_id: str,
     user_id: str,
     word: str,
+    sentence_index: int,
+    word_index: int,
     translation: str | None = None,
     source_sentence: str | None = None,
     is_fallback: bool = False,
@@ -51,14 +48,17 @@ async def upsert_annotation(
         select(ArticleAnnotation).where(
             ArticleAnnotation.article_id == article_id,
             ArticleAnnotation.user_id == user_id,
-            ArticleAnnotation.word == word,
+            ArticleAnnotation.sentence_index == sentence_index,
+            ArticleAnnotation.word_index == word_index,
         )
     )
     if existing:
+        existing.word = word
         existing.translation = translation
         existing.source_sentence = source_sentence
         existing.is_fallback = is_fallback
         existing.gen_status = gen_status
+        existing.is_stale = False
         await db.flush()
         return existing
 
@@ -66,103 +66,63 @@ async def upsert_annotation(
         article_id=article_id,
         user_id=user_id,
         word=word,
+        sentence_index=sentence_index,
+        word_index=word_index,
         translation=translation,
         source_sentence=source_sentence,
         is_fallback=is_fallback,
         gen_status=gen_status,
+        is_stale=False,
     )
     db.add(ann)
     await db.flush()
     return ann
 
 
-async def sync_word_to_user_articles_task(
-    current_article_id: str,
-    user_id: str,
-    word: str,
+async def get_word_click_locations(
+    db: AsyncSession, user_id: str, word: str, limit: int = 3
+) -> list[dict]:
+    """Recent positions where the user clicked this lemma, newest first."""
+    rows = list(await db.execute(
+        select(ArticleAnnotation, Article.title, Article.is_library)
+        .join(Article, Article.id == ArticleAnnotation.article_id)
+        .where(
+            ArticleAnnotation.user_id == user_id,
+            ArticleAnnotation.word == word,
+        )
+        .order_by(ArticleAnnotation.created_at.desc())
+        .limit(limit)
+    ))
+    return [
+        {
+            "article_id": ann.article_id,
+            "article_title": title,
+            "is_library": bool(is_library),
+            "sentence_index": ann.sentence_index,
+            "source_sentence": ann.source_sentence,
+            "is_stale": ann.is_stale,
+        }
+        for ann, title, is_library in rows
+    ]
+
+
+async def revalidate_article_annotations(
+    db: AsyncSession, article_id: str, tokens: list[dict]
 ) -> None:
     """
-    Background task: for the user's OWN uploaded articles (not library) that contain
-    this lemma, create a pending annotation so it gets translated on next open.
-    Library articles use lazy sync instead (triggered on article open).
+    After an article is re-tokenized, mark annotations stale when the token now
+    sitting at (sentence_index, word_index) no longer has the same lemma.
+    Sweeps ALL users' annotations for this article. Caller commits.
     """
-    from app.database import AsyncSessionLocal
-    from app.models.article import Article
-
-    async with AsyncSessionLocal() as db:
-        stmt = text(
-            "SELECT id FROM articles "
-            "WHERE user_id = :user_id "
-            "AND is_library = false "
-            "AND id != :current_article_id "
-            "AND tokens @> :filter::jsonb"
-        )
-        result = await db.execute(stmt, {
-            "user_id": user_id,
-            "current_article_id": current_article_id,
-            "filter": f'[{{"lemma": "{word}"}}]',
-        })
-        article_ids = [row[0] for row in result]
-
-        for article_id in article_ids:
-            existing = await db.scalar(
-                select(ArticleAnnotation).where(
-                    ArticleAnnotation.article_id == article_id,
-                    ArticleAnnotation.user_id == user_id,
-                    ArticleAnnotation.word == word,
-                )
-            )
-            if not existing:
-                db.add(ArticleAnnotation(
-                    article_id=article_id,
-                    user_id=user_id,
-                    word=word,
-                    gen_status="pending",
-                ))
-
-        await db.commit()
-
-
-async def generate_pending_translations_task(article_id: str, user_id: str) -> None:
-    """
-    Background task: translate all pending annotations in an article.
-    Runs after article load when cross-article synced words need translation.
-    """
-    from app.database import AsyncSessionLocal
-    from app.models.article import Article
-    from app.services import ai_service, dict_service
-    from app.services.nlp_service import find_sentence_for_lemma
-    from sqlalchemy import select
-
-    async with AsyncSessionLocal() as db:
-        article = await db.scalar(select(Article).where(Article.id == article_id))
-        if not article:
-            return
-
-        pending = await get_pending_annotations(db, article_id, user_id)
-        from app.services import settings_service, free_translation_service
-
-        use_fallback = settings_service.load().get("use_free_translation_fallback", True)
-
-        for ann in pending:
-            sentence = find_sentence_for_lemma(ann.word, article.tokens, article.sentences)
-            try:
-                translation = await ai_service.translate_in_context(ann.word, sentence)
-                ann.translation = translation
-                ann.source_sentence = sentence
-                ann.is_fallback = False
-                ann.gen_status = "done"
-            except Exception:
-                if use_fallback:
-                    try:
-                        translation = await free_translation_service.translate(ann.word)
-                        ann.translation = translation
-                        ann.source_sentence = sentence
-                        ann.is_fallback = True
-                        ann.gen_status = "done"
-                    except Exception:
-                        ann.gen_status = "failed"
-                else:
-                    ann.gen_status = "failed"
-
-        await db.commit()
+    # Map (sentence_index, word_index) -> lemma from the new tokens.
+    pos_lemma = {
+        (t["sentence_index"], t["index"]): t.get("lemma")
+        for t in tokens
+        if t.get("is_alpha")
+    }
+    rows = list(await db.scalars(
+        select(ArticleAnnotation).where(ArticleAnnotation.article_id == article_id)
+    ))
+    for ann in rows:
+        current = pos_lemma.get((ann.sentence_index, ann.word_index))
+        ann.is_stale = current != ann.word
