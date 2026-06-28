@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Optional
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -12,8 +16,8 @@ class SettingsOut(BaseModel):
 
 
 class SettingsIn(BaseModel):
-    use_free_translation_fallback: bool | None = None
-    auto_open_sidebar_on_mark: bool | None = None
+    use_free_translation_fallback: Optional[bool] = None
+    auto_open_sidebar_on_mark: Optional[bool] = None
 
 
 @router.get("/settings", response_model=SettingsOut)

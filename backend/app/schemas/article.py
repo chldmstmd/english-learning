@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -9,13 +11,16 @@ class ArticleCreateRequest(BaseModel):
     raw_text: str
 
 
-class ChapterEditRequest(BaseModel):
-    title: str
-    raw_text: str
-
-
 class ProgressUpdateRequest(BaseModel):
     last_sentence_index: int
+
+
+class TranslationProgress(BaseModel):
+    total_words: int = 0
+    processed_words: int = 0
+    total_chunks: int = 0
+    completed_chunks: int = 0
+    percent: int = 0
 
 
 class ArticleListItem(BaseModel):
@@ -23,37 +28,15 @@ class ArticleListItem(BaseModel):
     title: str
     word_count: int
     created_at: datetime
-    # Present for bookmarked library articles in the unified list
-    is_library: bool = False
-    source_category: str | None = None
-    difficulty: str | None = None
     translation_status: Literal["untranslated", "processing", "done", "stale", "failed"] = "untranslated"
-
-    model_config = {"from_attributes": True}
-
-
-class LibraryArticleListItem(BaseModel):
-    id: str
-    title: str
-    word_count: int
-    source_category: str | None
-    difficulty: str | None
-    published_at: datetime | None
-    cover_image_url: str | None
-    source_url: str | None
-    translation_status: Literal["untranslated", "processing", "done", "stale", "failed"] = "untranslated"
-    raw_text: str = ""
-    created_at: datetime
-    # Populated per-request by the router (not ORM fields)
-    is_bookmarked: bool = False
-    read_at: datetime | None = None
+    translation_progress: TranslationProgress
 
     model_config = {"from_attributes": True}
 
 
 class AnnotationSchema(BaseModel):
-    translation: str | None
-    source_sentence: str | None
+    translation: Optional[str]
+    source_sentence: Optional[str]
     is_fallback: bool
     gen_status: str
 
@@ -65,34 +48,13 @@ class ArticleDetailResponse(BaseModel):
     sentences: list[dict[str, Any]]
     word_count: int
     annotations: dict[str, AnnotationSchema]  # "{sentence_index}-{word_index}" → annotation
-    word_statuses: dict[str, str]             # lemma → status
-    # Library metadata (null for user-uploaded articles)
-    is_library: bool = False
-    is_bookmarked: bool = False
-    source_url: str | None = None
-    source_category: str | None = None
-    difficulty: str | None = None
-    published_at: datetime | None = None
     translation_status: Literal["untranslated", "processing", "done", "stale", "failed"] = "untranslated"
-    # Chapter context (null for standalone articles)
-    book_id: str | None = None
-    chapter_order: int | None = None
-    prev_article_id: str | None = None
-    next_article_id: str | None = None
-    last_sentence_index: int | None = None
+    translation_progress: TranslationProgress
+    last_sentence_index: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
 
-class AdminArticleCreateRequest(BaseModel):
-    title: str
-    raw_text: str
-    difficulty: str | None = None
-    source_category: str | None = None
-
-
-class AdminArticlePatchRequest(BaseModel):
-    title: str | None = None
-    raw_text: str | None = None
-    difficulty: str | None = None
-    source_category: str | None = None
+class ArticleTranslateResponse(BaseModel):
+    translation_status: Literal["untranslated", "processing", "done", "stale", "failed"]
+    translation_progress: TranslationProgress

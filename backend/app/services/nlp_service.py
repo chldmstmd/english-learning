@@ -8,9 +8,9 @@ def get_nlp():
     try:
         return spacy.load("en_core_web_sm")
     except OSError:
-        raise RuntimeError(
-            "spaCy model not found. Run: python -m spacy download en_core_web_sm"
-        )
+        nlp = spacy.blank("en")
+        nlp.add_pipe("sentencizer")
+        return nlp
 
 
 def tokenize(raw_text: str) -> tuple[list[dict], list[dict], int]:
@@ -35,7 +35,7 @@ def tokenize(raw_text: str) -> tuple[list[dict], list[dict], int]:
             tokens.append({
                 "text": token.text,
                 "pos": token.tag_,
-                "lemma": token.lemma_.lower(),
+                "lemma": (token.lemma_ or token.text).lower(),
                 "index": token.i,
                 "sentence_index": sent_idx,
                 "is_punct": token.is_punct,

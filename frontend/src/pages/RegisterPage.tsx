@@ -47,7 +47,7 @@ export default function RegisterPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
         <h1 className="text-xl font-bold text-gray-900 mb-1">注册</h1>
-        <p className="text-sm text-gray-400 mb-6">Context-Aware Smart Reader</p>
+        <p className="text-sm text-gray-400 mb-6">Context Translation Layer</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

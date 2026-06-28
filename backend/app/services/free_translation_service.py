@@ -1,12 +1,5 @@
-import asyncio
-
-from deep_translator import GoogleTranslator
+from app.translation_engine import GoogleFallbackTranslator
 
 
 async def translate(word: str) -> str:
-    loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(
-        None,
-        lambda: GoogleTranslator(source="en", target="zh-CN").translate(word),
-    )
-    return result
+    return await GoogleFallbackTranslator().translate(word)

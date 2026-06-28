@@ -16,6 +16,7 @@ from app.config import settings
 from app.models.annotation import ArticleAnnotation
 from app.models.article import Article
 from app.services import annotation_service
+from app.services.schema_service import ensure_runtime_schema
 
 
 def _run(coro_fn):
@@ -23,6 +24,8 @@ def _run(coro_fn):
         engine = create_async_engine(settings.database_url)
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         try:
+            async with engine.begin() as conn:
+                await ensure_runtime_schema(conn)
             await coro_fn(session_factory)
         finally:
             await engine.dispose()

@@ -5,6 +5,7 @@ _PATH = Path(__file__).resolve().parent.parent.parent / "settings.json"
 _DEFAULTS: dict = {
     "use_free_translation_fallback": True,
     "auto_open_sidebar_on_mark": True,
+    "ai_provider": "deepseek",
 }
 
 

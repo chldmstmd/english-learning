@@ -1,4 +1,4 @@
-from sqlalchemy import String, Text, Integer, UniqueConstraint, Index
+from sqlalchemy import String, Text, Integer, UniqueConstraint, Index, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -12,7 +12,9 @@ class ArticleTranslation(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    article_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    article_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
+    )
     sentence_index: Mapped[int] = mapped_column(Integer, nullable=False)
     word_index: Mapped[int] = mapped_column(Integer, nullable=False)
     word: Mapped[str] = mapped_column(String(100), nullable=False)

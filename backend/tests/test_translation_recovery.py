@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Regression tests for stuck-translation recovery.
 
@@ -22,6 +24,9 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from app.config import settings
 from app.models.article import Article
+from app.services.schema_service import ensure_runtime_schema
+from app.models.user import User
+from app.routers import articles as articles_router
 from app.services import batch_translation_service
 
 
@@ -36,6 +41,8 @@ def _run(coro_fn):
         engine = create_async_engine(settings.database_url)
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         try:
+            async with engine.begin() as conn:
+                await ensure_runtime_schema(conn)
             await coro_fn(session_factory)
         finally:
             await engine.dispose()
@@ -107,5 +114,45 @@ def test_recover_leaves_other_statuses_untouched():
             assert await _status_of(session_factory, failed.id) == "failed"
         finally:
             await _cleanup(session_factory, done.id, untranslated.id, failed.id)
+
+    _run(scenario)
+
+
+def test_translate_route_spawns_without_preemptive_processing(monkeypatch):
+    user_id = str(uuid4())
+    article = Article(
+        id=str(uuid4()),
+        user_id=user_id,
+        title="route-spawn-test",
+        raw_text="hello world",
+        tokens=[],
+        sentences=[],
+        word_count=2,
+        translation_status="untranslated",
+    )
+    spawned: list[str] = []
+
+    monkeypatch.setattr(
+        articles_router.batch_translation_service,
+        "spawn_translation",
+        lambda article_id: spawned.append(article_id),
+    )
+
+    async def scenario(session_factory):
+        await _seed(session_factory, article)
+        try:
+            async with session_factory() as db:
+                result = await articles_router.translate_article(
+                    article.id,
+                    db=db,
+                    current_user=User(id=user_id, email="route@example.com", hashed_password="x"),
+                )
+
+            assert result["translation_status"] == "processing"
+            assert result["translation_progress"]["total_words"] == 0
+            assert spawned == [article.id]
+            assert await _status_of(session_factory, article.id) == "untranslated"
+        finally:
+            await _cleanup(session_factory, article.id)
 
     _run(scenario)

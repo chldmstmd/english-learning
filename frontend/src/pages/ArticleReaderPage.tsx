@@ -1,19 +1,20 @@
 import { useEffect, useRef } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Languages, Loader2, RotateCcw } from "lucide-react";
 import { api } from "../api/client";
-import { useVocabStore } from "../store/vocabStore";
+import { useAnnotationStore } from "../store/annotationStore";
 import { useSidebarStore } from "../store/sidebarStore";
 import { ArticleBody } from "../components/ArticleBody";
 import { WordSidebar } from "../components/WordSidebar";
-import type { ArticleDetail, AppSettings } from "../types";
+import type { ArticleDetail, ArticleTranslateResponse, AppSettings } from "../types";
 
 export default function ArticleReaderPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const targetSentence = searchParams.get("sentence");
-  const { initFromArticle } = useVocabStore();
+  const queryClient = useQueryClient();
+  const { initFromArticle } = useAnnotationStore();
   const { close: closeSidebar } = useSidebarStore();
 
   // Close sidebar when leaving the page
@@ -23,6 +24,8 @@ export default function ArticleReaderPage() {
     queryKey: ["article", id],
     queryFn: () => api.get(`articles/${id}`).json<ArticleDetail>(),
     enabled: !!id,
+    refetchInterval: (query) =>
+      query.state.data?.translation_status === "processing" ? 2500 : false,
   });
 
   const { data: settings } = useQuery({
@@ -31,14 +34,14 @@ export default function ArticleReaderPage() {
     staleTime: Infinity,
   });
 
-  // Seed the vocab store once on load
+  // Seed annotation cache once on load
   useEffect(() => {
     if (article) {
-      initFromArticle(article.id, article.word_statuses, article.annotations);
+      initFromArticle(article.id, article.annotations);
     }
   }, [article]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Scroll to ?sentence= target (from vocab location link) or last-read sentence
+  // Scroll to ?sentence= target or last-read sentence
   useEffect(() => {
     if (!article) return;
     const idx = targetSentence != null ? Number(targetSentence) : article.last_sentence_index;
@@ -54,6 +57,21 @@ export default function ArticleReaderPage() {
   const progressMutation = useMutation({
     mutationFn: (body: { last_sentence_index: number }) =>
       api.put(`articles/${id}/progress`, { json: body }),
+  });
+
+  const pretranslateMutation = useMutation({
+    mutationFn: () => api.post(`articles/${id}/translate`).json<ArticleTranslateResponse>(),
+    onSuccess: (data) => {
+      queryClient.setQueryData<ArticleDetail>(["article", id], (current) =>
+        current
+          ? {
+              ...current,
+              translation_status: data.translation_status,
+              translation_progress: data.translation_progress,
+            }
+          : current
+      );
+    },
   });
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -92,6 +110,16 @@ export default function ArticleReaderPage() {
     );
   }
 
+  const translationProgress = article.translation_progress;
+  const hasTranslationProgress = translationProgress.total_words > 0;
+  const canResumeTranslation =
+    article.translation_status === "failed" && translationProgress.processed_words > 0;
+  const pretranslateLabel = canResumeTranslation
+    ? "继续预翻译"
+    : article.translation_status === "failed"
+      ? "重试"
+      : "预翻译";
+
   return (
     <div className="flex h-screen bg-white">
       {/* Main reading area */}
@@ -106,12 +134,56 @@ export default function ArticleReaderPage() {
             <ArrowLeft size={18} />
           </Link>
           <h1 className="text-sm font-medium text-gray-700 truncate">{article.title}</h1>
-          <span className="ml-auto text-xs text-gray-400">{article.word_count.toLocaleString()} 词</span>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-xs text-gray-400">{article.word_count.toLocaleString()} 词</span>
+            {article.translation_status !== "done" && (
+              <button
+                onClick={() => pretranslateMutation.mutate()}
+                disabled={article.translation_status === "processing" || pretranslateMutation.isPending}
+                className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {article.translation_status === "processing" || pretranslateMutation.isPending ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : article.translation_status === "failed" ? (
+                  <RotateCcw size={14} />
+                ) : (
+                  <Languages size={14} />
+                )}
+                {pretranslateLabel}
+              </button>
+            )}
+          </div>
         </div>
 
         {article.translation_status === "processing" && (
-          <div className="bg-blue-50 text-blue-600 text-xs text-center py-1.5">
-            正在准备翻译缓存...
+          <div className="border-b border-blue-100 bg-blue-50 px-6 py-2 text-xs text-blue-700">
+            <div className="mx-auto flex max-w-2xl items-center gap-3">
+              <span className="shrink-0">预翻译 {hasTranslationProgress ? `${translationProgress.percent}%` : "准备中"}</span>
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-blue-100">
+                <div
+                  className="h-full rounded-full bg-blue-500 transition-all"
+                  style={{ width: `${hasTranslationProgress ? translationProgress.percent : 2}%` }}
+                />
+              </div>
+              {hasTranslationProgress && (
+                <span className="shrink-0 text-blue-500">
+                  {translationProgress.processed_words}/{translationProgress.total_words} 词 ·{" "}
+                  {translationProgress.completed_chunks}/{translationProgress.total_chunks}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+        {article.translation_status === "failed" && (
+          <div className="border-b border-red-100 bg-red-50 px-6 py-2 text-xs text-red-600">
+            <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
+              <span>{canResumeTranslation ? "预翻译中断，可继续" : "预翻译失败，请重试"}</span>
+              {hasTranslationProgress && (
+                <span className="text-red-500">
+                  {translationProgress.percent}% · {translationProgress.processed_words}/{translationProgress.total_words} 词
+                </span>
+              )}
+            </div>
           </div>
         )}
 
@@ -123,18 +195,6 @@ export default function ArticleReaderPage() {
             articleId={article.id}
             autoOpenSidebar={settings?.auto_open_sidebar_on_mark ?? true}
           />
-
-          {article.book_id && (
-            <div className="flex items-center justify-between mt-12 pt-6 border-t border-gray-100">
-              {article.prev_article_id ? (
-                <Link to={`/articles/${article.prev_article_id}`} className="text-sm text-blue-500 hover:text-blue-600">← 上一章</Link>
-              ) : <span />}
-              <Link to={`/books/${article.book_id}`} className="text-xs text-gray-400 hover:text-gray-600">目录</Link>
-              {article.next_article_id ? (
-                <Link to={`/articles/${article.next_article_id}`} className="text-sm text-blue-500 hover:text-blue-600">下一章 →</Link>
-              ) : <span />}
-            </div>
-          )}
         </div>
       </div>
 

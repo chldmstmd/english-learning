@@ -14,7 +14,7 @@ the "{si}_{wi}" keys the caller reads back.
 """
 import re
 
-from app.services.ai_service import _build_sentence_blocks
+from app.translation_engine.prompts import build_sentence_blocks
 
 
 def test_block_advertises_si_wi_keys():
@@ -25,7 +25,7 @@ def test_block_advertises_si_wi_keys():
         {"index": 1, "text": "When reports came."},
     ]
 
-    block = _build_sentence_blocks(word_entries, sentences)
+    block = build_sentence_blocks(word_entries, sentences)
 
     # The si_wi identifiers the write-back path uses must appear verbatim
     assert '"0_0"' in block
@@ -42,7 +42,7 @@ def test_every_word_entry_has_a_distinct_si_wi_identifier():
     word_entries = [(0, 0, "a"), (0, 1, "b"), (1, 0, "c")]
     sentences = [{"index": 0, "text": "a b"}, {"index": 1, "text": "c"}]
 
-    block = _build_sentence_blocks(word_entries, sentences)
+    block = build_sentence_blocks(word_entries, sentences)
 
     ids = set(re.findall(r'"(\d+_\d+)"', block))
     assert ids == {"0_0", "0_1", "1_0"}

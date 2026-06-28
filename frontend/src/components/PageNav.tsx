@@ -6,8 +6,6 @@ import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
 import type { AppSettings } from "../types";
 
-const ADMIN_ROLES = ["content_admin", "super_admin"];
-
 function Toggle({
   checked,
   onChange,
@@ -85,40 +83,8 @@ export function PageNav() {
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
-              文章
+              文本
             </Link>
-            <Link
-              to="/library"
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                pathname.startsWith("/library")
-                  ? "bg-gray-100 text-gray-900"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              内容库
-            </Link>
-            <Link
-              to="/vocab"
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                pathname === "/vocab"
-                  ? "bg-gray-100 text-gray-900"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              生词表
-            </Link>
-            {user && ADMIN_ROLES.includes(user.role) && (
-              <Link
-                to="/admin"
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  pathname.startsWith("/admin")
-                    ? "bg-gray-100 text-gray-900"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                管理
-              </Link>
-            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -168,7 +134,7 @@ export function PageNav() {
 
                 <div className="border-t border-gray-100 pt-3">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-gray-700">标红时弹出单词解释</span>
+                    <span className="text-sm text-gray-700">翻译完成后打开侧栏</span>
                     <Toggle
                       checked={settings?.auto_open_sidebar_on_mark ?? true}
                       onChange={(val) =>
@@ -177,7 +143,7 @@ export function PageNav() {
                     />
                   </div>
                   <p className="text-xs text-gray-400 mt-1.5">
-                    关闭后，标红只在单词上方显示翻译注音
+                    关闭后，只在原文上方显示译文
                   </p>
                 </div>
               </div>

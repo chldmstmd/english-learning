@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -26,7 +29,7 @@ def create_access_token(user_id: str) -> str:
     return jwt.encode({"sub": user_id, "exp": expire}, settings.secret_key, algorithm=ALGORITHM)
 
 
-def decode_token(token: str) -> str | None:
+def decode_token(token: str) -> Optional[str]:
     """Returns user_id or None if token is invalid."""
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
@@ -35,11 +38,11 @@ def decode_token(token: str) -> str | None:
         return None
 
 
-async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
+async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
     return await db.scalar(select(User).where(User.email == email))
 
 
-async def get_user_by_id(db: AsyncSession, user_id: str) -> User | None:
+async def get_user_by_id(db: AsyncSession, user_id: str) -> Optional[User]:
     return await db.scalar(select(User).where(User.id == user_id))
 
 

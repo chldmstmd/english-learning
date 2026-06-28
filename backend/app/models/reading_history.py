@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Optional
 from uuid import uuid4
 
 from sqlalchemy import String, DateTime, Integer, UniqueConstraint, func
@@ -17,5 +20,4 @@ class UserReadingHistory(Base):
     last_read_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    book_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
-    last_sentence_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_sentence_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

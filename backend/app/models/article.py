@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import String, Text, Integer, DateTime, Boolean, Index, func
+from sqlalchemy import String, Text, Integer, DateTime, Index, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,21 +27,37 @@ class Article(Base):
     word_count: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    # V1.1: Content library fields (null for user-uploaded articles)
-    # source: "user_upload" | "library"
-    source: Mapped[str] = mapped_column(String(32), nullable=False, server_default="user_upload")
-    # is_library=True means public shared article; False means user's private article
-    is_library: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    source_url: Mapped[str | None] = mapped_column(Text, nullable=True, unique=True)
-    source_category: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    # difficulty: "level1" (slow) | "level2" (standard)
-    difficulty: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    cover_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Batch translation status: untranslated | processing | done | stale | failed
     translation_status: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default="untranslated"
     )
-    # V1.2: Book/chapter fields (null for standalone articles)
-    book_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
-    chapter_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    translation_total_words: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0", default=0
+    )
+    translation_processed_words: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0", default=0
+    )
+    translation_total_chunks: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0", default=0
+    )
+    translation_completed_chunks: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0", default=0
+    )
+
+    @property
+    def translation_progress(self) -> dict:
+        total_words = self.translation_total_words or 0
+        processed_words = min(self.translation_processed_words or 0, total_words)
+        percent = int(processed_words * 100 / total_words) if total_words else 0
+        if self.translation_status == "done" and total_words == 0:
+            percent = 100
+        return {
+            "total_words": total_words,
+            "processed_words": processed_words,
+            "total_chunks": self.translation_total_chunks or 0,
+            "completed_chunks": min(
+                self.translation_completed_chunks or 0,
+                self.translation_total_chunks or 0,
+            ),
+            "percent": percent,
+        }
