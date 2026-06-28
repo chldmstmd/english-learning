@@ -14,7 +14,7 @@ the "{si}_{wi}" keys the caller reads back.
 """
 import re
 
-from app.translation_engine.prompts import build_sentence_blocks
+from app.translation_engine.prompts import BATCH_TRANSLATION_PROMPT, build_sentence_blocks
 
 
 def test_block_advertises_si_wi_keys():
@@ -46,3 +46,11 @@ def test_every_word_entry_has_a_distinct_si_wi_identifier():
 
     ids = set(re.findall(r'"(\d+_\d+)"', block))
     assert ids == {"0_0", "0_1", "1_0"}
+
+
+def test_batch_prompt_requires_token_level_translations():
+    assert "逐词ruby标注" in BATCH_TRANSLATION_PROMPT
+    assert "只翻译该ID对应的单词本身" in BATCH_TRANSLATION_PROMPT
+    assert "不要翻译包含它的相邻短语" in BATCH_TRANSLATION_PROMPT
+    assert "University=大学" in BATCH_TRANSLATION_PROMPT
+    assert "Press=出版社" in BATCH_TRANSLATION_PROMPT

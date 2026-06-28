@@ -36,10 +36,12 @@ class OpenAICompatibleProvider:
         api_key_getter: Callable[[], str],
         model_getter: Callable[[], str],
         base_url_getter: Optional[Callable[[], str]] = None,
+        single_request_extra_body: dict[str, Any] | None = None,
     ) -> None:
         self._api_key_getter = api_key_getter
         self._model_getter = model_getter
         self._base_url_getter = base_url_getter
+        self._single_request_extra_body = single_request_extra_body
         self._client: Any | None = None
 
     def _get_client(self) -> Any:
@@ -64,14 +66,18 @@ class OpenAICompatibleProvider:
         timeout: float,
         request_kind: RequestKind,
     ) -> str:
+        request_kwargs = {
+            "model": self._model_getter(),
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "response_format": {"type": "json_object"},
+        }
+        if request_kind == "single" and self._single_request_extra_body is not None:
+            request_kwargs["extra_body"] = self._single_request_extra_body
+
         response = await asyncio.wait_for(
-            self._get_client().chat.completions.create(
-                model=self._model_getter(),
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=max_tokens,
-                temperature=temperature,
-                response_format={"type": "json_object"},
-            ),
+            self._get_client().chat.completions.create(**request_kwargs),
             timeout=timeout,
         )
         content = response.choices[0].message.content

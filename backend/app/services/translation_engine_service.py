@@ -20,6 +20,7 @@ def create_default_translation_engine() -> TranslationEngine:
                 api_key_getter=lambda: settings.deepseek_api_key,
                 model_getter=lambda: settings.deepseek_model,
                 base_url_getter=lambda: settings.deepseek_base_url,
+                single_request_extra_body={"thinking": {"type": "disabled"}},
             ),
             "openai": OpenAICompatibleProvider(
                 api_key_getter=lambda: settings.openai_api_key,

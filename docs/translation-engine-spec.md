@@ -89,6 +89,7 @@ async def complete_json(
 - provider 不负责解析 JSON。
 - provider 不负责 fallback。
 - `request_kind` 用于区分单词翻译和批量翻译；Gemini 当前用它选择不同模型。
+- 默认 DeepSeek provider 在 `request_kind="single"` 时会额外发送 `extra_body={"thinking": {"type": "disabled"}}`，避免实时单词翻译产生 reasoning tokens；批量翻译和其他 provider 不发送该参数。
 
 ## 6. 单词语境翻译
 
@@ -124,6 +125,8 @@ temperature=0
 timeout=5.0
 request_kind="single"
 ```
+
+默认 DeepSeek provider 会基于 `request_kind="single"` 关闭 thinking mode。该选项属于 provider 适配层行为，不改变 translate engine 的公开方法签名。
 
 4. 解析 provider 返回 JSON。
 5. 读取 `translation` 字段。
@@ -258,15 +261,19 @@ request_kind="batch"
 
 单词 prompt 要求：
 
-- AI 扮演专业英中词汇翻译助手。
-- 根据句子语境翻译指定单词。
-- 翻译控制在 2-6 个中文字。
+- AI 扮演英文阅读器的逐词 ruby 标注助手。
+- 根据句子语境翻译指定目标单词。
+- 只翻译目标单词本身，不翻译包含它的相邻短语、专名或搭配。
+- 如果目标单词属于多词短语，只返回该单词在短语中的局部含义；例如 `University Press` 中 `University -> 大学`、`Press -> 出版社`。
+- 中文翻译控制在 1-6 个中文字。
 - 只返回 JSON。
 
 批量 prompt 要求：
 
 - 输入文章全文和按句子分组的待翻译词汇。
 - 每个待翻译词的 ID 形如 `"0_1"`。
+- 每个 ID 只翻译对应单词本身，不翻译相邻短语、专名或搭配。
+- 多词短语按 token 拆分为局部含义；例如 `University Press` 中 `University -> 大学`、`Press -> 出版社`。
 - 对虚词返回空字符串 `""`。
 - 每个词汇 ID 都必须出现在返回 JSON 中。
 - 只返回 JSON object。
