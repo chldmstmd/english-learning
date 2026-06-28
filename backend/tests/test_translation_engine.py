@@ -27,10 +27,19 @@ class FakeProvider:
 class FakeFallback:
     def __init__(self, translation: str) -> None:
         self.translation = translation
-        self.words: list[str] = []
+        self.calls: list[dict] = []
 
-    async def translate(self, word: str) -> str:
-        self.words.append(word)
+    async def translate(
+        self,
+        word: str,
+        source_language: str = "en",
+        target_language: str = "zh-CN",
+    ) -> str:
+        self.calls.append({
+            "word": word,
+            "source_language": source_language,
+            "target_language": target_language,
+        })
         return self.translation
 
 
@@ -45,7 +54,30 @@ def test_translate_in_context_returns_provider_translation():
 
     assert result == "银行"
     assert provider.calls[0]["request_kind"] == "single"
+    assert provider.calls[0]["max_tokens"] == 100
+    assert provider.calls[0]["temperature"] == 0
+    assert "从en翻译成zh-CN" in provider.calls[0]["prompt"]
     assert "the bank approved the loan" in provider.calls[0]["prompt"]
+
+
+def test_translate_in_context_accepts_custom_languages():
+    provider = FakeProvider('{"translation": "rive"}')
+    engine = TranslationEngine(
+        providers={"deepseek": provider},
+        runtime_settings_loader=lambda: {"ai_provider": "deepseek"},
+    )
+
+    result = asyncio.run(
+        engine.translate_in_context(
+            "bank",
+            "The boat reached the bank of the river.",
+            source_language="en",
+            target_language="fr",
+        )
+    )
+
+    assert result == "rive"
+    assert "从en翻译成fr" in provider.calls[0]["prompt"]
 
 
 def test_translate_with_fallback_marks_fallback_result():
@@ -60,11 +92,51 @@ def test_translate_with_fallback_marks_fallback_result():
         },
     )
 
-    result = asyncio.run(engine.translate_in_context_with_fallback("bank", "by the bank of the river"))
+    result = asyncio.run(
+        engine.translate_in_context_with_fallback("bank", "by the bank of the river")
+    )
 
     assert result.translation == "河岸"
     assert result.is_fallback is True
-    assert fallback.words == ["bank"]
+    assert fallback.calls == [
+        {
+            "word": "bank",
+            "source_language": "en",
+            "target_language": "zh-CN",
+        }
+    ]
+
+
+def test_translate_with_fallback_passes_custom_languages():
+    provider = FakeProvider(error=RuntimeError("provider down"))
+    fallback = FakeFallback("rive")
+    engine = TranslationEngine(
+        providers={"deepseek": provider},
+        fallback_translator=fallback,
+        runtime_settings_loader=lambda: {
+            "ai_provider": "deepseek",
+            "use_free_translation_fallback": True,
+        },
+    )
+
+    result = asyncio.run(
+        engine.translate_in_context_with_fallback(
+            "bank",
+            "The boat reached the bank of the river.",
+            source_language="en",
+            target_language="fr",
+        )
+    )
+
+    assert result.translation == "rive"
+    assert result.is_fallback is True
+    assert fallback.calls == [
+        {
+            "word": "bank",
+            "source_language": "en",
+            "target_language": "fr",
+        }
+    ]
 
 
 def test_translate_with_disabled_fallback_raises_unavailable():

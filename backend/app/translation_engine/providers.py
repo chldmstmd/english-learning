@@ -20,7 +20,12 @@ class TranslationProvider(Protocol):
 
 
 class FallbackTranslator(Protocol):
-    async def translate(self, word: str) -> str:
+    async def translate(
+        self,
+        word: str,
+        source_language: str = "en",
+        target_language: str = "zh-CN",
+    ) -> str:
         """Return a plain word translation from a fallback service."""
 
 
@@ -129,11 +134,19 @@ class GeminiProvider:
 
 
 class GoogleFallbackTranslator:
-    async def translate(self, word: str) -> str:
+    async def translate(
+        self,
+        word: str,
+        source_language: str = "en",
+        target_language: str = "zh-CN",
+    ) -> str:
         from deep_translator import GoogleTranslator
 
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,
-            lambda: GoogleTranslator(source="en", target="zh-CN").translate(word),
+            lambda: GoogleTranslator(
+                source=source_language,
+                target=target_language,
+            ).translate(word),
         )

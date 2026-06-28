@@ -29,7 +29,7 @@ npm run dev
 **backend/.env** 配置：
 ```
 DEEPSEEK_API_KEY=<key>
-DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_MODEL=deepseek-v4-flash
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/english_learning
 ```

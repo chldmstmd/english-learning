@@ -4,12 +4,11 @@ from collections import defaultdict
 from typing import Sequence
 
 TRANSLATION_PROMPT = (
-    "你是专业英中词汇翻译助手。\n"
-    "根据给定句子，为指定单词提供最符合当前语境的中文翻译。\n"
-    "翻译控制在2-6个中文字以内。\n"
-    '只返回JSON格式：{{"translation": "翻译结果"}}\n\n'
-    "单词：{word}\n"
-    "句子：{sentence}"
+    "按语境把单词从{source_language}翻译成{target_language}。"
+    "目标是中文(zh/zh-CN/Chinese)时用2-6个中文字；否则简短自然。"
+    '只返回JSON:{{"translation":"..."}}\n'
+    "单词:{word}\n"
+    "句子:{sentence}"
 )
 
 BATCH_TRANSLATION_PROMPT = (

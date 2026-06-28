@@ -15,8 +15,18 @@ from app.translation_engine import (
 _build_sentence_blocks = build_sentence_blocks
 
 
-async def translate_in_context(word: str, sentence: str) -> str:
-    return await _translate_in_context(word, sentence)
+async def translate_in_context(
+    word: str,
+    sentence: str,
+    source_language: str = "en",
+    target_language: str = "zh-CN",
+) -> str:
+    return await _translate_in_context(
+        word,
+        sentence,
+        source_language=source_language,
+        target_language=target_language,
+    )
 
 
 async def batch_translate_article(

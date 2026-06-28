@@ -79,12 +79,23 @@ class TranslationEngine:
             raise TranslationResponseError(f"Expected dict response, got {type(result)}")
         return result
 
-    async def translate_in_context(self, word: str, sentence: str) -> str:
-        prompt = TRANSLATION_PROMPT.format(word=word, sentence=sentence)
+    async def translate_in_context(
+        self,
+        word: str,
+        sentence: str,
+        source_language: str = "en",
+        target_language: str = "zh-CN",
+    ) -> str:
+        prompt = TRANSLATION_PROMPT.format(
+            word=word,
+            sentence=sentence,
+            source_language=source_language,
+            target_language=target_language,
+        )
         text = await self._provider().complete_json(
             prompt,
-            max_tokens=200,
-            temperature=0.1,
+            max_tokens=100,
+            temperature=0,
             timeout=5.0,
             request_kind="single",
         )
@@ -94,17 +105,32 @@ class TranslationEngine:
             raise TranslationResponseError("Translation response is missing a string translation")
         return translation
 
-    async def translate_in_context_with_fallback(self, word: str, sentence: str) -> TranslationResult:
+    async def translate_in_context_with_fallback(
+        self,
+        word: str,
+        sentence: str,
+        source_language: str = "en",
+        target_language: str = "zh-CN",
+    ) -> TranslationResult:
         try:
             return TranslationResult(
-                translation=await self.translate_in_context(word, sentence),
+                translation=await self.translate_in_context(
+                    word,
+                    sentence,
+                    source_language=source_language,
+                    target_language=target_language,
+                ),
                 is_fallback=False,
             )
         except Exception as exc:
             if not self._fallback_enabled() or self._fallback_translator is None:
                 raise TranslationUnavailableError("AI translation unavailable") from exc
             try:
-                translation = await self._fallback_translator.translate(word)
+                translation = await self._fallback_translator.translate(
+                    word,
+                    source_language=source_language,
+                    target_language=target_language,
+                )
             except Exception as fallback_exc:
                 raise TranslationUnavailableError("All translation services unavailable") from fallback_exc
             return TranslationResult(translation=translation, is_fallback=True)

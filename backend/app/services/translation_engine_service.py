@@ -42,12 +42,32 @@ def get_translation_engine() -> TranslationEngine:
     return _default_engine
 
 
-async def translate_in_context(word: str, sentence: str) -> str:
-    return await get_translation_engine().translate_in_context(word, sentence)
+async def translate_in_context(
+    word: str,
+    sentence: str,
+    source_language: str = "en",
+    target_language: str = "zh-CN",
+) -> str:
+    return await get_translation_engine().translate_in_context(
+        word,
+        sentence,
+        source_language=source_language,
+        target_language=target_language,
+    )
 
 
-async def translate_in_context_with_fallback(word: str, sentence: str) -> TranslationResult:
-    return await get_translation_engine().translate_in_context_with_fallback(word, sentence)
+async def translate_in_context_with_fallback(
+    word: str,
+    sentence: str,
+    source_language: str = "en",
+    target_language: str = "zh-CN",
+) -> TranslationResult:
+    return await get_translation_engine().translate_in_context_with_fallback(
+        word,
+        sentence,
+        source_language=source_language,
+        target_language=target_language,
+    )
 
 
 async def batch_translate_article(
