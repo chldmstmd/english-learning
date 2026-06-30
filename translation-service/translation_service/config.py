@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    translation_engine_mock: bool = Field(False, alias="TRANSLATION_ENGINE_MOCK")
     gemini_api_key: str = Field("", alias="GEMINI_API_KEY")
     openai_api_key: str = Field("", alias="OPENAI_API_KEY")
     deepseek_api_key: str = Field(

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 
 from translation_engine.engine import TranslationEngine
 from translation_service import main as service_main
+from translation_service import engine_factory
 
 
 class FakeProvider:
@@ -125,3 +128,52 @@ def test_batch_translation_returns_translation_map(monkeypatch):
     assert response.status_code == 200
     assert response.json() == {"translations": {"0_1": "银行", "0_2": "批准"}}
     assert provider.calls[0]["request_kind"] == "batch"
+
+
+def test_mock_mode_context_translation_does_not_require_ai_provider(monkeypatch):
+    monkeypatch.setattr(
+        engine_factory,
+        "settings",
+        SimpleNamespace(translation_engine_mock=True),
+    )
+    client = TestClient(service_main.app)
+
+    response = client.post(
+        "/v1/translate/context",
+        json={
+            "word": "bank",
+            "sentence": "The boat reached the bank.",
+            "ai_provider": "deepseek",
+            "use_fallback": False,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"translation": "mock: bank", "is_fallback": False}
+
+
+def test_mock_mode_batch_translation_returns_each_word(monkeypatch):
+    monkeypatch.setattr(
+        engine_factory,
+        "settings",
+        SimpleNamespace(translation_engine_mock=True),
+    )
+    client = TestClient(service_main.app)
+
+    response = client.post(
+        "/v1/translate/batch",
+        json={
+            "article_text": "The bank approved the loan.",
+            "word_entries": [[0, 1, "bank"], [0, 2, "approved"]],
+            "sentences": [{"index": 0, "text": "The bank approved the loan."}],
+            "ai_provider": "deepseek",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "translations": {
+            "0_1": "mock: bank",
+            "0_2": "mock: approved",
+        }
+    }

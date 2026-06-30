@@ -10,6 +10,7 @@ from translation_engine import (
 )
 
 from .config import settings
+from .mock_provider import MockTranslationProvider
 
 
 VALID_PROVIDERS = frozenset({"deepseek", "openai", "gemini", "google"})
@@ -21,6 +22,17 @@ def normalize_provider_name(provider_name: str) -> str:
 
 
 def create_translation_engine(runtime_settings: Mapping[str, object]) -> TranslationEngine:
+    if settings.translation_engine_mock:
+        mock_provider = MockTranslationProvider()
+        return TranslationEngine(
+            providers={
+                "deepseek": mock_provider,
+                "openai": mock_provider,
+                "gemini": mock_provider,
+            },
+            runtime_settings_loader=lambda: runtime_settings,
+        )
+
     return TranslationEngine(
         providers={
             "deepseek": OpenAICompatibleProvider(
