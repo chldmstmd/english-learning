@@ -14,6 +14,16 @@ export interface Sentence {
   text: string;
 }
 
+export interface ArticleParagraph {
+  id: string;
+  paragraph_version_id: string;
+  position: number;
+  raw_text: string;
+  tokens: Token[];
+  sentences: Sentence[];
+  word_count: number;
+}
+
 export interface Annotation {
   translation: string | null;
   source_sentence: string | null;
@@ -34,8 +44,10 @@ export interface ArticleListItem {
 export interface ArticleDetail {
   id: string;
   title: string;
+  raw_text: string;
   tokens: Token[];
   sentences: Sentence[];
+  paragraphs: ArticleParagraph[];
   word_count: number;
   annotations: Record<string, Annotation>;
   translation_status?: TranslationStatus;

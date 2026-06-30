@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Languages, Loader2, RotateCcw } from "lucide-react";
+import { ArrowLeft, Check, Languages, Loader2, Pencil, RotateCcw, X } from "lucide-react";
 import { api } from "../api/client";
 import { useAnnotationStore } from "../store/annotationStore";
 import { useSidebarStore } from "../store/sidebarStore";
@@ -16,6 +16,9 @@ export default function ArticleReaderPage() {
   const queryClient = useQueryClient();
   const { initFromArticle } = useAnnotationStore();
   const { close: closeSidebar } = useSidebarStore();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editText, setEditText] = useState("");
 
   // Close sidebar when leaving the page
   useEffect(() => () => closeSidebar(), [closeSidebar]);
@@ -40,6 +43,13 @@ export default function ArticleReaderPage() {
       initFromArticle(article.id, article.annotations);
     }
   }, [article]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (article && !isEditing) {
+      setEditTitle(article.title);
+      setEditText(article.raw_text);
+    }
+  }, [article, isEditing]);
 
   // Scroll to ?sentence= target or last-read sentence
   useEffect(() => {
@@ -71,6 +81,17 @@ export default function ArticleReaderPage() {
             }
           : current
       );
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (body: { title: string; raw_text: string }) =>
+      api.put(`articles/${id}`, { json: body }).json<ArticleDetail>(),
+    onSuccess: (data) => {
+      queryClient.setQueryData<ArticleDetail>(["article", id], data);
+      queryClient.invalidateQueries({ queryKey: ["articles"] });
+      initFromArticle(data.id, data.annotations);
+      setIsEditing(false);
     },
   });
 
@@ -119,6 +140,10 @@ export default function ArticleReaderPage() {
     : article.translation_status === "failed"
       ? "重试"
       : "预翻译";
+  const canSaveEdit =
+    editTitle.trim().length > 0 &&
+    editText.trim().length > 0 &&
+    !updateMutation.isPending;
 
   return (
     <div className="flex h-screen bg-white">
@@ -136,10 +161,56 @@ export default function ArticleReaderPage() {
           <h1 className="text-sm font-medium text-gray-700 truncate">{article.title}</h1>
           <div className="ml-auto flex items-center gap-3">
             <span className="text-xs text-gray-400">{article.word_count.toLocaleString()} 词</span>
+            {isEditing ? (
+              <>
+                <button
+                  onClick={() =>
+                    updateMutation.mutate({
+                      title: editTitle.trim(),
+                      raw_text: editText,
+                    })
+                  }
+                  disabled={!canSaveEdit}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 px-2.5 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {updateMutation.isPending ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Check size={14} />
+                  )}
+                  保存
+                </button>
+                <button
+                  onClick={() => {
+                    setEditTitle(article.title);
+                    setEditText(article.raw_text);
+                    setIsEditing(false);
+                  }}
+                  disabled={updateMutation.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <X size={14} />
+                  取消
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setIsEditing(true)}
+                disabled={article.translation_status === "processing"}
+                className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Pencil size={14} />
+                编辑
+              </button>
+            )}
             {article.translation_status !== "done" && (
               <button
                 onClick={() => pretranslateMutation.mutate()}
-                disabled={article.translation_status === "processing" || pretranslateMutation.isPending}
+                disabled={
+                  isEditing ||
+                  article.translation_status === "processing" ||
+                  pretranslateMutation.isPending
+                }
                 className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:border-blue-200 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {article.translation_status === "processing" || pretranslateMutation.isPending ? (
@@ -189,12 +260,32 @@ export default function ArticleReaderPage() {
 
         {/* Article content */}
         <div className="max-w-2xl mx-auto px-8 py-10">
-          <ArticleBody
-            tokens={article.tokens}
-            sentences={article.sentences}
-            articleId={article.id}
-            autoOpenSidebar={settings?.auto_open_sidebar_on_mark ?? true}
-          />
+          {isEditing ? (
+            <div className="space-y-4">
+              <input
+                value={editTitle}
+                onChange={(event) => setEditTitle(event.target.value)}
+                className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+              />
+              <textarea
+                value={editText}
+                onChange={(event) => setEditText(event.target.value)}
+                rows={20}
+                className="min-h-[520px] w-full resize-y rounded-md border border-gray-200 px-3 py-3 font-mono text-sm leading-6 text-gray-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+              />
+              {updateMutation.isError && (
+                <p className="text-xs text-red-500">
+                  {(updateMutation.error as Error).message}
+                </p>
+              )}
+            </div>
+          ) : (
+            <ArticleBody
+              paragraphs={article.paragraphs}
+              articleId={article.id}
+              autoOpenSidebar={settings?.auto_open_sidebar_on_mark ?? true}
+            />
+          )}
         </div>
       </div>
 

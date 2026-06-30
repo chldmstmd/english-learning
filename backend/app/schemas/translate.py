@@ -6,6 +6,7 @@ class TranslateRequest(BaseModel):
     lemma: str   # lowercase lemma used for annotation lookup (e.g. "bank")
     sentence: str
     article_id: str
+    article_paragraph_id: str
     sentence_index: int  # clicked token position (annotation key + cache lookup)
     word_index: int      # clicked token position (annotation key + cache lookup)
 

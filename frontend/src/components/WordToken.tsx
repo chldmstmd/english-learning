@@ -12,15 +12,22 @@ const TRANSLATION_HIGHLIGHT =
 interface Props {
   token: Token;
   articleId: string;
+  articleParagraphId: string;
   sentences: Sentence[];
   autoOpenSidebar: boolean;
 }
 
-export const WordToken: React.FC<Props> = ({ token, articleId, sentences, autoOpenSidebar }) => {
+export const WordToken: React.FC<Props> = ({
+  token,
+  articleId,
+  articleParagraphId,
+  sentences,
+  autoOpenSidebar,
+}) => {
   const { getAnnotation, setAnnotation } = useAnnotationStore();
   const { open: openSidebar } = useSidebarStore();
 
-  const annotation = getAnnotation(articleId, token.sentence_index, token.index);
+  const annotation = getAnnotation(articleId, articleParagraphId, token.sentence_index, token.index);
 
   const getSentenceText = () =>
     sentences.find((s) => s.index === token.sentence_index)?.text ?? "";
@@ -34,13 +41,14 @@ export const WordToken: React.FC<Props> = ({ token, articleId, sentences, autoOp
             lemma: token.lemma,
             sentence: getSentenceText(),
             article_id: articleId,
+            article_paragraph_id: articleParagraphId,
             sentence_index: token.sentence_index,
             word_index: token.index,
           },
         })
         .json<TranslateResponse>(),
     onSuccess: (data) => {
-      setAnnotation(articleId, token.sentence_index, token.index, {
+      setAnnotation(articleId, articleParagraphId, token.sentence_index, token.index, {
         translation: data.translation,
         source_sentence: getSentenceText(),
         is_fallback: data.is_fallback,

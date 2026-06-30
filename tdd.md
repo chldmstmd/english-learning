@@ -25,8 +25,8 @@ PostgreSQL
 核心原则：
 
 - 翻译层是产品主体，阅读器只是文本容器。
-- 用户实际点击结果存于位置级 `article_annotations`。
-- 预翻译结果存于位置级 `article_translations` cache。
+- 用户实际点击结果存于段落实例位置级 `paragraph_annotations`。
+- 预翻译结果存于段落版本位置级 `paragraph_translations` cache。
 - 同一个 lemma 在不同句子位置可以有不同翻译。
 
 ---
@@ -47,19 +47,42 @@ PostgreSQL
 - `id`
 - `user_id`
 - `title`
-- `raw_text`
-- `tokens`
-- `sentences`
+- `raw_text`（由段落序列归一化生成）
+- `tokens`（兼容用整篇快照）
+- `sentences`（兼容用整篇快照）
 - `word_count`
 - `translation_status`
 - `created_at`
 
-### `article_annotations`
+### `paragraph_versions`
+
+不可变段落内容版本。
+
+- `id`
+- `raw_text`
+- `tokens`
+- `sentences`
+- `word_count`
+- `text_hash`
+
+### `article_paragraphs`
+
+文章的有序段落索引。
+
+- `id`
+- `article_id`
+- `paragraph_version_id`
+- `position`
+
+唯一约束：`(article_id, position)`。
+
+### `paragraph_annotations`
 
 位置级语境翻译。
 
 - `article_id`
 - `user_id`
+- `article_paragraph_id`
 - `word`
 - `sentence_index`
 - `word_index`
@@ -69,20 +92,20 @@ PostgreSQL
 - `gen_status`
 - `is_stale`
 
-唯一约束：`(article_id, user_id, sentence_index, word_index)`。
+唯一约束：`(article_id, user_id, article_paragraph_id, sentence_index, word_index)`。
 
-### `article_translations`
+### `paragraph_translations`
 
 批量预翻译缓存。
 
-- `article_id`
+- `paragraph_version_id`
 - `sentence_index`
 - `word_index`
 - `word`
 - `lemma`
 - `translation`
 
-唯一约束：`(article_id, sentence_index, word_index)`。
+唯一约束：`(paragraph_version_id, sentence_index, word_index)`。
 
 ---
 
@@ -117,6 +140,7 @@ Request:
   "lemma": "bank",
   "sentence": "The banks of the river flooded.",
   "article_id": "uuid",
+  "article_paragraph_id": "uuid",
   "sentence_index": 0,
   "word_index": 2
 }
@@ -125,10 +149,10 @@ Request:
 Flow:
 
 1. Verify the article belongs to the current user.
-2. Check `article_translations` for the clicked position.
+2. Check `paragraph_translations` for the clicked paragraph version and position.
 3. If no cache hit, call context translation.
 4. Fallback to free translation when enabled.
-5. Upsert `article_annotations` for the clicked position.
+5. Upsert `paragraph_annotations` for the clicked paragraph occurrence and position.
 6. Return translation.
 
 ---

@@ -7,9 +7,11 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import settings
+from app.database import Base
 from app.models.article import Article
-from app.models.article_translation import ArticleTranslation
+from app.models.paragraph import ArticleParagraph, ParagraphTranslation
 from app.services import batch_translation_service
+from app.services import paragraph_service
 from app.services.schema_service import ensure_runtime_schema
 
 
@@ -19,6 +21,7 @@ def _run(coro_fn):
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         try:
             async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
                 await ensure_runtime_schema(conn)
             await coro_fn(session_factory)
         finally:
@@ -43,14 +46,40 @@ def _token(text: str, index: int, sentence_index: int) -> dict:
 async def _seed_article(session_factory, article: Article) -> None:
     async with session_factory() as db:
         db.add(article)
+        await db.flush()
+        await paragraph_service.replace_article_paragraphs(db, article, article.raw_text)
+        version_ids = list(await db.scalars(
+            select(ArticleParagraph.paragraph_version_id)
+            .where(ArticleParagraph.article_id == article.id)
+        ))
+        if version_ids:
+            await db.execute(
+                delete(ParagraphTranslation)
+                .where(ParagraphTranslation.paragraph_version_id.in_(version_ids))
+            )
         await db.commit()
 
 
 async def _cleanup(session_factory, article_id: str) -> None:
     async with session_factory() as db:
-        await db.execute(delete(ArticleTranslation).where(ArticleTranslation.article_id == article_id))
+        version_ids = list(await db.scalars(
+            select(ArticleParagraph.paragraph_version_id)
+            .where(ArticleParagraph.article_id == article_id)
+        ))
+        if version_ids:
+            await db.execute(
+                delete(ParagraphTranslation)
+                .where(ParagraphTranslation.paragraph_version_id.in_(version_ids))
+            )
         await db.execute(delete(Article).where(Article.id == article_id))
         await db.commit()
+
+
+async def _version_ids_for_article(db, article_id: str) -> list[str]:
+    return list(await db.scalars(
+        select(ArticleParagraph.paragraph_version_id)
+        .where(ArticleParagraph.article_id == article_id)
+    ))
 
 
 def test_chunked_pretranslation_resumes_after_failed_chunk(monkeypatch):
@@ -98,6 +127,7 @@ def test_chunked_pretranslation_resumes_after_failed_chunk(monkeypatch):
         try:
             await batch_translation_service.translate_article(article_id)
             async with session_factory() as db:
+                version_ids = await _version_ids_for_article(db, article_id)
                 status, processed, completed = (
                     await db.execute(
                         select(
@@ -108,8 +138,8 @@ def test_chunked_pretranslation_resumes_after_failed_chunk(monkeypatch):
                     )
                 ).one()
                 cached_count = await db.scalar(
-                    select(func.count()).select_from(ArticleTranslation)
-                    .where(ArticleTranslation.article_id == article_id)
+                    select(func.count()).select_from(ParagraphTranslation)
+                    .where(ParagraphTranslation.paragraph_version_id.in_(version_ids))
                 )
             assert status == "failed"
             assert processed == 2
@@ -123,6 +153,7 @@ def test_chunked_pretranslation_resumes_after_failed_chunk(monkeypatch):
             )
             await batch_translation_service.translate_article(article_id)
             async with session_factory() as db:
+                version_ids = await _version_ids_for_article(db, article_id)
                 status, processed, completed, total_chunks = (
                     await db.execute(
                         select(
@@ -134,8 +165,8 @@ def test_chunked_pretranslation_resumes_after_failed_chunk(monkeypatch):
                     )
                 ).one()
                 cached_count = await db.scalar(
-                    select(func.count()).select_from(ArticleTranslation)
-                    .where(ArticleTranslation.article_id == article_id)
+                    select(func.count()).select_from(ParagraphTranslation)
+                    .where(ParagraphTranslation.paragraph_version_id.in_(version_ids))
                 )
             assert status == "done"
             assert processed == 4

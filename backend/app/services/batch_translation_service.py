@@ -10,7 +10,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.database import AsyncSessionLocal
 from app.models.article import Article
-from app.models.article_translation import ArticleTranslation
+from app.models.paragraph import ParagraphTranslation
+from app.services import paragraph_service
 from app.services.translation_engine_service import batch_translate_article
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ _background_tasks: set[asyncio.Task] = set()
 @dataclass(frozen=True)
 class TranslationChunk:
     index: int
+    paragraph_version_id: str
     word_entries: list[tuple[int, int, str, str]]
     sentences: list[dict]
 
@@ -34,8 +36,11 @@ class TranslationChunk:
         return "\n".join(sentence.get("text", "") for sentence in self.sentences)
 
     @property
-    def keys(self) -> set[tuple[int, int]]:
-        return {(sentence_index, word_index) for sentence_index, word_index, _, _ in self.word_entries}
+    def keys(self) -> set[tuple[str, int, int]]:
+        return {
+            (self.paragraph_version_id, sentence_index, word_index)
+            for sentence_index, word_index, _, _ in self.word_entries
+        }
 
 
 def spawn_translation(article_id: str) -> None:
@@ -55,6 +60,7 @@ async def _set_status(db, article_id: str, status: str) -> None:
 def _build_translation_chunks(
     tokens: list[dict],
     sentences: list[dict],
+    paragraph_version_id: str,
     chunk_word_limit: int | None = None,
 ) -> list[TranslationChunk]:
     """Group translatable words into sentence-preserving chunks."""
@@ -83,6 +89,7 @@ def _build_translation_chunks(
             chunks.append(
                 TranslationChunk(
                     index=len(chunks),
+                    paragraph_version_id=paragraph_version_id,
                     word_entries=current_words,
                     sentences=current_sentences,
                 )
@@ -105,20 +112,51 @@ def _build_translation_chunks(
     return chunks
 
 
-def _all_chunk_keys(chunks: list[TranslationChunk]) -> set[tuple[int, int]]:
+def _all_chunk_keys(chunks: list[TranslationChunk]) -> set[tuple[str, int, int]]:
     return {key for chunk in chunks for key in chunk.keys}
 
 
-def _count_completed_chunks(chunks: list[TranslationChunk], existing_keys: set[tuple[int, int]]) -> int:
+def _count_completed_chunks(chunks: list[TranslationChunk], existing_keys: set[tuple[str, int, int]]) -> int:
     return sum(1 for chunk in chunks if chunk.keys <= existing_keys)
 
 
-async def _load_existing_keys(db, article_id: str) -> set[tuple[int, int]]:
+async def _build_article_translation_chunks(db, article_id: str) -> list[TranslationChunk]:
+    chunks: list[TranslationChunk] = []
+    paragraph_rows = await paragraph_service.get_article_paragraphs(db, article_id)
+    for _, version in paragraph_rows:
+        paragraph_chunks = _build_translation_chunks(
+            version.tokens,
+            version.sentences,
+            version.id,
+        )
+        for chunk in paragraph_chunks:
+            chunks.append(
+                TranslationChunk(
+                    index=len(chunks),
+                    paragraph_version_id=chunk.paragraph_version_id,
+                    word_entries=chunk.word_entries,
+                    sentences=chunk.sentences,
+                )
+            )
+    return chunks
+
+
+async def _load_existing_keys(db, article_id: str) -> set[tuple[str, int, int]]:
+    paragraph_rows = await paragraph_service.get_article_paragraphs(db, article_id)
+    version_ids = {version.id for _, version in paragraph_rows}
+    if not version_ids:
+        return set()
     rows = await db.execute(
-        select(ArticleTranslation.sentence_index, ArticleTranslation.word_index)
-        .where(ArticleTranslation.article_id == article_id)
+        select(
+            ParagraphTranslation.paragraph_version_id,
+            ParagraphTranslation.sentence_index,
+            ParagraphTranslation.word_index,
+        ).where(ParagraphTranslation.paragraph_version_id.in_(version_ids))
     )
-    return {(int(sentence_index), int(word_index)) for sentence_index, word_index in rows}
+    return {
+        (str(version_id), int(sentence_index), int(word_index))
+        for version_id, sentence_index, word_index in rows
+    }
 
 
 async def _save_progress(
@@ -126,7 +164,7 @@ async def _save_progress(
     article_id: str,
     *,
     chunks: list[TranslationChunk],
-    existing_keys: set[tuple[int, int]],
+    existing_keys: set[tuple[str, int, int]],
     status: str | None = None,
 ) -> dict:
     all_keys = _all_chunk_keys(chunks)
@@ -153,7 +191,7 @@ async def _save_progress(
 
 
 async def prepare_translation_progress(db, article: Article) -> dict:
-    chunks = _build_translation_chunks(article.tokens, article.sentences)
+    chunks = await _build_article_translation_chunks(db, article.id)
     existing_keys = await _load_existing_keys(db, article.id)
     return await _save_progress(
         db,
@@ -208,7 +246,7 @@ async def translate_article(article_id: str) -> None:
         await _set_status(db, article_id, "processing")
 
         try:
-            chunks = _build_translation_chunks(article.tokens, article.sentences)
+            chunks = await _build_article_translation_chunks(db, article_id)
             existing_keys = await _load_existing_keys(db, article_id)
 
             if not chunks:
@@ -231,7 +269,8 @@ async def translate_article(article_id: str) -> None:
 
             for chunk in chunks:
                 missing_entries = [
-                    entry for entry in chunk.word_entries if (entry[0], entry[1]) not in existing_keys
+                    entry for entry in chunk.word_entries
+                    if (chunk.paragraph_version_id, entry[0], entry[1]) not in existing_keys
                 ]
                 if not missing_entries:
                     await _save_progress(
@@ -253,7 +292,7 @@ async def translate_article(article_id: str) -> None:
                     key = f"{si}_{wi}"
                     translation = translations.get(key, "")
                     values.append({
-                        "article_id": article_id,
+                        "paragraph_version_id": chunk.paragraph_version_id,
                         "sentence_index": si,
                         "word_index": wi,
                         "word": word,
@@ -262,14 +301,16 @@ async def translate_article(article_id: str) -> None:
                     })
 
                 if values:
-                    stmt = pg_insert(ArticleTranslation).values(values)
+                    stmt = pg_insert(ParagraphTranslation).values(values)
                     stmt = stmt.on_conflict_do_update(
-                        constraint="uq_article_word_position",
-                        set_={"translation": pg_insert(ArticleTranslation).excluded.translation},
+                        constraint="uq_paragraph_word_position",
+                        set_={"translation": pg_insert(ParagraphTranslation).excluded.translation},
                     )
                     await db.execute(stmt)
                     await db.commit()
-                    existing_keys.update((si, wi) for si, wi, _, _ in missing_entries)
+                    existing_keys.update(
+                        (chunk.paragraph_version_id, si, wi) for si, wi, _, _ in missing_entries
+                    )
 
                 await _save_progress(
                     db,
@@ -293,7 +334,7 @@ async def translate_article(article_id: str) -> None:
             logger.error("Batch translation failed for article %s: %s", article_id, exc)
             await db.rollback()
             try:
-                chunks = _build_translation_chunks(article.tokens, article.sentences)
+                chunks = await _build_article_translation_chunks(db, article_id)
                 existing_keys = await _load_existing_keys(db, article_id)
                 await _save_progress(
                     db,

@@ -1,19 +1,24 @@
 import { create } from "zustand";
 import type { Annotation } from "../types";
 
-export const annotationKey = (sentenceIndex: number, wordIndex: number) =>
-  `${sentenceIndex}-${wordIndex}`;
+export const annotationKey = (
+  articleParagraphId: string,
+  sentenceIndex: number,
+  wordIndex: number
+) => `${articleParagraphId}-${sentenceIndex}-${wordIndex}`;
 
 interface AnnotationStore {
   articleAnnotations: Record<string, Record<string, Annotation>>;
 
   getAnnotation: (
     articleId: string,
+    articleParagraphId: string,
     sentenceIndex: number,
     wordIndex: number
   ) => Annotation | undefined;
   setAnnotation: (
     articleId: string,
+    articleParagraphId: string,
     sentenceIndex: number,
     wordIndex: number,
     annotation: Annotation
@@ -24,16 +29,18 @@ interface AnnotationStore {
 export const useAnnotationStore = create<AnnotationStore>((set, get) => ({
   articleAnnotations: {},
 
-  getAnnotation: (articleId, sentenceIndex, wordIndex) =>
-    get().articleAnnotations[articleId]?.[annotationKey(sentenceIndex, wordIndex)],
+  getAnnotation: (articleId, articleParagraphId, sentenceIndex, wordIndex) =>
+    get().articleAnnotations[articleId]?.[
+      annotationKey(articleParagraphId, sentenceIndex, wordIndex)
+    ],
 
-  setAnnotation: (articleId, sentenceIndex, wordIndex, annotation) =>
+  setAnnotation: (articleId, articleParagraphId, sentenceIndex, wordIndex, annotation) =>
     set((s) => ({
       articleAnnotations: {
         ...s.articleAnnotations,
         [articleId]: {
           ...(s.articleAnnotations[articleId] ?? {}),
-          [annotationKey(sentenceIndex, wordIndex)]: annotation,
+          [annotationKey(articleParagraphId, sentenceIndex, wordIndex)]: annotation,
         },
       },
     })),

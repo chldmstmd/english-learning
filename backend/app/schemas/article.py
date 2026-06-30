@@ -11,6 +11,11 @@ class ArticleCreateRequest(BaseModel):
     raw_text: str
 
 
+class ArticleUpdateRequest(BaseModel):
+    title: str
+    raw_text: str
+
+
 class ProgressUpdateRequest(BaseModel):
     last_sentence_index: int
 
@@ -41,13 +46,25 @@ class AnnotationSchema(BaseModel):
     gen_status: str
 
 
-class ArticleDetailResponse(BaseModel):
+class ArticleParagraphSchema(BaseModel):
     id: str
-    title: str
+    paragraph_version_id: str
+    position: int
+    raw_text: str
     tokens: list[dict[str, Any]]
     sentences: list[dict[str, Any]]
     word_count: int
-    annotations: dict[str, AnnotationSchema]  # "{sentence_index}-{word_index}" → annotation
+
+
+class ArticleDetailResponse(BaseModel):
+    id: str
+    title: str
+    raw_text: str
+    tokens: list[dict[str, Any]]
+    sentences: list[dict[str, Any]]
+    paragraphs: list[ArticleParagraphSchema]
+    word_count: int
+    annotations: dict[str, AnnotationSchema]
     translation_status: Literal["untranslated", "processing", "done", "stale", "failed"] = "untranslated"
     translation_progress: TranslationProgress
     last_sentence_index: Optional[int] = None

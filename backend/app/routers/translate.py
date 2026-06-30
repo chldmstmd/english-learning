@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.article import Article
-from app.models.article_translation import ArticleTranslation
+from app.models.paragraph import ArticleParagraph, ParagraphTranslation
 from app.models.user import User
 from app.schemas.translate import TranslateRequest, TranslateResponse
 from app.services import annotation_service
@@ -29,21 +29,26 @@ async def translate_word(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    article = await db.scalar(
-        select(Article).where(
-            Article.id == body.article_id,
-            Article.user_id == current_user.id,
+    row = (
+        await db.execute(
+            select(ArticleParagraph, Article)
+            .join(Article, ArticleParagraph.article_id == Article.id)
+            .where(
+                ArticleParagraph.id == body.article_paragraph_id,
+                ArticleParagraph.article_id == body.article_id,
+                Article.user_id == current_user.id,
+            )
         )
-    )
-    if not article:
-        raise HTTPException(status_code=404, detail="Article not found")
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Article paragraph not found")
+    article_paragraph, _article = row
 
-    # Check batch translation cache (per position)
     cached = await db.scalar(
-        select(ArticleTranslation).where(
-            ArticleTranslation.article_id == body.article_id,
-            ArticleTranslation.sentence_index == body.sentence_index,
-            ArticleTranslation.word_index == body.word_index,
+        select(ParagraphTranslation).where(
+            ParagraphTranslation.paragraph_version_id == article_paragraph.paragraph_version_id,
+            ParagraphTranslation.sentence_index == body.sentence_index,
+            ParagraphTranslation.word_index == body.word_index,
         )
     )
     if cached and cached.translation:
@@ -55,6 +60,7 @@ async def translate_word(
         db,
         body.article_id,
         current_user.id,
+        body.article_paragraph_id,
         body.lemma,
         sentence_index=body.sentence_index,
         word_index=body.word_index,

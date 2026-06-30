@@ -28,7 +28,7 @@ Flow:
 ```text
 validate article ownership
   -> upsert minimal user word state
-  -> check article_translations by article_id + sentence_index + word_index
+  -> check paragraph_translations by article_paragraph_id's paragraph_version_id + sentence_index + word_index
   -> cache hit: return cached contextual translation
   -> cache miss: call AI single-word translation
   -> store position annotation
@@ -55,12 +55,12 @@ Flow:
 validate article ownership
   -> spawn background task
   -> mark article translation_status = processing
-  -> collect alpha tokens from article.tokens
-  -> group words by sentence
-  -> split article words into sentence-preserving chunks
-  -> skip chunks already present in article_translations
+  -> collect alpha tokens from current paragraph_versions
+  -> group words by paragraph and sentence
+  -> split paragraph words into sentence-preserving chunks
+  -> skip chunks already present in paragraph_translations
   -> call batch AI translation per missing chunk
-  -> write article_translations cache after each chunk
+  -> write paragraph_translations cache after each chunk
   -> update article translation progress after each chunk
   -> mark article translation_status = done
 ```
@@ -74,7 +74,7 @@ The current batch implementation sends the article text plus sentence-grouped wo
 }
 ```
 
-These results are cached by position, not by lemma, because the same word can have different meanings in different sentences.
+These results are cached by paragraph version and position, not by lemma, because the same word can have different meanings in different paragraph contexts.
 
 ## Provider Layer
 
@@ -92,16 +92,16 @@ Both realtime and pretranslation use the same provider adapter and JSON parsing 
 
 ## Storage
 
-`article_translations` is the pretranslation cache:
+`paragraph_translations` is the pretranslation cache:
 
 ```text
-article_id + sentence_index + word_index -> translation
+paragraph_version_id + sentence_index + word_index -> translation
 ```
 
-`article_annotations` records the result a user actually requested by clicking a word:
+`paragraph_annotations` records the result a user actually requested by clicking a word:
 
 ```text
-article_id + user_id + sentence_index + word_index -> translation
+article_id + user_id + article_paragraph_id + sentence_index + word_index -> translation
 ```
 
 ## Known Limits

@@ -255,7 +255,7 @@ request_kind="batch"
 句子 0 的第 5 个词 -> "0_5"
 ```
 
-调用方会用同样的 key 写回 `article_translations`。如果 prompt 中暴露的 key 和调用方读取的 key 不一致，缓存会写入空翻译。
+调用方会用同样的 key 写回当前 `paragraph_version_id` 下的 `paragraph_translations`。如果 prompt 中暴露的 key 和调用方读取的 key 不一致，缓存会写入空翻译。
 
 ## 9. Prompt 契约
 
@@ -304,7 +304,7 @@ POST /api/v1/translate-word
 调用方职责：
 
 - 校验文章属于当前用户。
-- 优先查询 `article_translations` 位置级缓存。
+- 优先查询 `paragraph_translations` 段落版本位置级缓存。
 - 缓存未命中时调用 `translate_in_context_with_fallback()`。
 - 将结果写入 annotation。
 - 返回 `translation` 和 `is_fallback`。
@@ -321,11 +321,11 @@ POST /api/v1/articles/{article_id}/translate
 
 - 创建后台任务。
 - 将文章状态改为 `processing`。
-- 从 tokens 中筛选 `is_alpha` 的词。
-- 按句子保持边界切 chunk。
+- 从当前段落版本的 tokens 中筛选 `is_alpha` 的词。
+- 按段落和句子保持边界切 chunk。
 - 跳过已存在的 position cache。
 - 对每个缺失 chunk 调用 `batch_translate_article()`。
-- 将结果写入 `article_translations`。
+- 将结果写入 `paragraph_translations`。
 - 更新进度字段。
 - 全部完成后标记 `done`，失败时标记 `failed`。
 
