@@ -4,6 +4,8 @@ backend/__pycache__/
 backend/**/__pycache__/
 backend/**/*.pyc
 backend/.env
+translation-service/**/__pycache__/
+translation-service/**/*.pyc
 
 # Node
 frontend/node_modules/
