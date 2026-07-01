@@ -1,17 +1,34 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Sequence
 
 import httpx
 
 from app.config import settings
 from app.services import settings_service
-from app.translation_engine import (
-    TranslationProviderError,
-    TranslationResponseError,
-    TranslationResult,
-    TranslationUnavailableError,
-)
+
+
+class TranslationClientError(RuntimeError):
+    pass
+
+
+class TranslationProviderError(TranslationClientError):
+    pass
+
+
+class TranslationResponseError(TranslationClientError):
+    pass
+
+
+class TranslationUnavailableError(TranslationClientError):
+    pass
+
+
+@dataclass(frozen=True)
+class TranslationResult:
+    translation: str
+    is_fallback: bool = False
 
 _transport: httpx.AsyncBaseTransport | None = None
 

@@ -9,8 +9,10 @@ from app.models.paragraph import ArticleParagraph, ParagraphTranslation
 from app.models.user import User
 from app.schemas.translate import TranslateRequest, TranslateResponse
 from app.services import annotation_service
-from app.services.translation_engine_service import translate_in_context_with_fallback
-from app.translation_engine import TranslationUnavailableError
+from app.services.translation_engine_service import (
+    TranslationUnavailableError,
+    translate_in_context_with_fallback,
+)
 
 router = APIRouter(tags=["translate"])
 

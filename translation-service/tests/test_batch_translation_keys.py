@@ -14,7 +14,7 @@ the "{si}_{wi}" keys the caller reads back.
 """
 import re
 
-from app.translation_engine.prompts import BATCH_TRANSLATION_PROMPT, build_sentence_blocks
+from translation_engine.prompts import BATCH_TRANSLATION_PROMPT, build_sentence_blocks
 
 
 def test_block_advertises_si_wi_keys():

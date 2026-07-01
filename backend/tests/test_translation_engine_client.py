@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from app.services import translation_engine_service
-from app.translation_engine import TranslationUnavailableError
+from app.services.translation_engine_service import TranslationUnavailableError
 
 
 def _run(coro):
