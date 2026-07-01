@@ -1,22 +1,10 @@
 from pydantic_settings import BaseSettings
-from pydantic import AliasChoices, Field
+from pydantic import Field
 
 
 class Settings(BaseSettings):
-    gemini_api_key: str = Field("", alias="GEMINI_API_KEY")
-    openai_api_key: str = Field("", alias="OPENAI_API_KEY")
-    deepseek_api_key: str = Field(
-        "",
-        validation_alias=AliasChoices("DEEPSEEK_API_KEY", "deepseek_api_key"),
-    )
-    deepseek_model: str = Field(
-        "deepseek-v4-flash",
-        validation_alias=AliasChoices("DEEPSEEK_MODEL", "deepseek_model"),
-    )
-    deepseek_base_url: str = Field(
-        "https://api.deepseek.com",
-        validation_alias=AliasChoices("DEEPSEEK_BASE_URL", "deepseek_base_url"),
-    )
+    # Provider credentials/models now live with the translation-service; the
+    # backend only talks to it over HTTP via translation_service_url.
     database_url: str = Field(
         "postgresql+asyncpg://postgres:postgres@localhost:5432/english_learning",
         alias="DATABASE_URL",

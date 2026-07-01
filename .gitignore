@@ -4,6 +4,9 @@ backend/__pycache__/
 backend/**/__pycache__/
 backend/**/*.pyc
 backend/.env
+
+# Runtime-mutable settings (use settings.example.json as a template)
+backend/settings.json
 translation-service/**/__pycache__/
 translation-service/**/*.pyc
 

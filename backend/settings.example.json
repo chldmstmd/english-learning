@@ -1,0 +1,5 @@
+{
+  "use_free_translation_fallback": true,
+  "auto_open_sidebar_on_mark": true,
+  "ai_provider": "deepseek"
+}
