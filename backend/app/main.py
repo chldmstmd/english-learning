@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import app.models.user           # noqa: F401
+    import app.models.user_settings  # noqa: F401
     import app.models.article        # noqa: F401
     import app.models.reading_history  # noqa: F401
     import app.models.paragraph      # noqa: F401

@@ -8,7 +8,7 @@ from app.models.article import Article
 from app.models.paragraph import ArticleParagraph, ParagraphTranslation
 from app.models.user import User
 from app.schemas.translate import TranslateRequest, TranslateResponse
-from app.services import annotation_service
+from app.services import annotation_service, settings_service
 from app.services.translation_engine_service import (
     TranslationUnavailableError,
     translate_in_context_with_fallback,
@@ -17,9 +17,18 @@ from app.services.translation_engine_service import (
 router = APIRouter(tags=["translate"])
 
 
-async def _get_translation_with_fallback(word: str, sentence: str) -> tuple[str, bool]:
+async def _get_translation_with_fallback(
+    word: str,
+    sentence: str,
+    *,
+    use_fallback: bool,
+) -> tuple[str, bool]:
     try:
-        result = await translate_in_context_with_fallback(word, sentence)
+        result = await translate_in_context_with_fallback(
+            word,
+            sentence,
+            use_fallback=use_fallback,
+        )
         return result.translation, result.is_fallback
     except TranslationUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -56,7 +65,12 @@ async def translate_word(
     if cached and cached.translation:
         translation, is_fallback = cached.translation, False
     else:
-        translation, is_fallback = await _get_translation_with_fallback(body.lemma, body.sentence)
+        preferences = await settings_service.load_user_preferences(db, current_user.id)
+        translation, is_fallback = await _get_translation_with_fallback(
+            body.lemma,
+            body.sentence,
+            use_fallback=preferences["use_free_translation_fallback"],
+        )
 
     await annotation_service.upsert_annotation(
         db,

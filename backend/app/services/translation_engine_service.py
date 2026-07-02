@@ -103,15 +103,22 @@ async def translate_in_context_with_fallback(
     sentence: str,
     source_language: str = "en",
     target_language: str = "zh-CN",
+    *,
+    use_fallback: bool | None = None,
 ) -> TranslationResult:
     runtime_settings = _runtime_settings()
+    fallback_enabled = (
+        bool(runtime_settings.get("use_free_translation_fallback", True))
+        if use_fallback is None
+        else use_fallback
+    )
     payload = {
         "word": word,
         "sentence": sentence,
         "source_language": source_language,
         "target_language": target_language,
         "ai_provider": runtime_settings.get("ai_provider", "deepseek"),
-        "use_fallback": bool(runtime_settings.get("use_free_translation_fallback", True)),
+        "use_fallback": fallback_enabled,
     }
     data = await _post("/v1/translate/context", payload, timeout=10.0)
     translation = data.get("translation")
